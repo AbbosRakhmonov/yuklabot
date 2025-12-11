@@ -1,0 +1,18 @@
+export const config = {
+  timezone: process.env.TZ || "Asia/Tashkent",
+  telegram: {
+    apiRoot: process.env.TELEGRAM_API_URL || "https://api.telegram.org",
+    localMode: process.env.TELEGRAM_LOCAL_MODE === "true",
+  },
+  webhook: {
+    enabled: process.env.WEBHOOK_ENABLED === "true",
+    url: process.env.WEBHOOK_URL || "",
+    path:
+      process.env.WEBHOOK_PATH ||
+      `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`,
+    port: parseInt(process.env.PORT || process.env.WEBHOOK_PORT || "3000", 10),
+  },
+  ytdlp: process.env.YTDLP_PATH || "yt-dlp",
+  logLevel: process.env.LOG_LEVEL || "info",
+  downloadDir: process.env.DOWNLOAD_DIR || "downloads",
+};
