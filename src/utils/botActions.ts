@@ -1,5 +1,5 @@
-import { Context } from "telegraf";
 import logger from "../config/logger";
+import { IMyContext } from "@/interfaces/IMyContext";
 
 export type BotActionType =
   | "typing"
@@ -16,17 +16,21 @@ export type BotActionType =
 
 /**
  * Shows a bot action (typing, uploading, etc.) based on the message type
- * @param ctx - Telegraf context
+ * @param ctx - IMyContext
  * @param action - The type of action to show (default: 'typing')
  * @returns Promise that resolves when the action is sent
  */
 export const showBotAction = async (
-  ctx: Context,
+  ctx: IMyContext,
   action: BotActionType = "typing"
 ) => {
   try {
     await ctx.sendChatAction(action);
   } catch (error) {
-    logger.error(`Error showing bot action ${action}`, { error, action });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error showing bot action ${action}`, {
+      error: errorMessage,
+      action,
+    });
   }
 };

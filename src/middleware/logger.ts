@@ -1,9 +1,10 @@
-import { Context, Middleware } from "telegraf";
+import { Middleware } from "telegraf";
 import logger from "../config/logger";
 import { myDayjs } from "../utils/myDayjs";
 import { config } from "../config/config";
+import { IMyContext } from "@/interfaces/IMyContext";
 
-export const loggerMiddleware: Middleware<Context> = async (
+export const loggerMiddleware: Middleware<IMyContext> = async (
   ctx,
   next
 ): Promise<void> => {

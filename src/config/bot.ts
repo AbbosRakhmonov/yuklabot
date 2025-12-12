@@ -1,9 +1,9 @@
-import { Context, Telegraf } from "telegraf";
+import { Telegraf } from "telegraf";
 import { config } from "./config";
 import logger from "./logger";
-import { Update } from "telegraf/typings/core/types/typegram";
+import { IMyContext } from "@/interfaces/IMyContext";
 
-export const createBot = (): Telegraf => {
+export const createBot = (): Telegraf<IMyContext> => {
   const botToken = process.env.BOT_TOKEN;
 
   if (!botToken) {
@@ -11,7 +11,7 @@ export const createBot = (): Telegraf => {
   }
 
   // Configure bot options for Local Bot API if enabled
-  const botOptions: Partial<Telegraf.Options<Context<Update>>> = {};
+  const botOptions: Partial<Telegraf.Options<IMyContext>> = {};
 
   if (
     config.telegram.localMode ||
@@ -23,5 +23,5 @@ export const createBot = (): Telegraf => {
     logger.info(`Using Local Bot API at: ${config.telegram.apiRoot}`);
   }
 
-  return new Telegraf(botToken, botOptions);
+  return new Telegraf<IMyContext>(botToken, botOptions);
 };

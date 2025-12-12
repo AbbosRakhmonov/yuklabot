@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { session } from "telegraf";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { createBot } from "./config/bot";
 import { startCommand } from "./commands/start.command";
@@ -13,6 +14,7 @@ import {
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
 import { handleTextMessage } from "./handlers/message.handler";
+import { stage } from "./scenes";
 
 // Load environment variables
 dotenv.config();
@@ -45,7 +47,12 @@ async function main(): Promise<void> {
     // Create bot instance
     const bot = createBot();
 
-    // Middleware (order matters - userActivity should be before logger)
+    // Middleware (order matters!)
+    bot.use(session());
+
+    bot.use(stage.middleware());
+
+    // 3. Custom middleware (userActivity should be before logger)
     bot.use(userActivityMiddleware);
     bot.use(loggerMiddleware);
 

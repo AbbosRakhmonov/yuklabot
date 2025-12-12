@@ -1,8 +1,9 @@
-import { Context, Middleware } from "telegraf";
+import { Middleware } from "telegraf";
 import User from "../models/User";
 import { myDayjs } from "../utils/myDayjs";
 import logger from "../config/logger";
 import { userActivityCache } from "../utils/userActivityCache";
+import { IMyContext } from "@/interfaces/IMyContext";
 
 /**
  * Optimized middleware to track user activity with throttling and batching
@@ -11,7 +12,7 @@ import { userActivityCache } from "../utils/userActivityCache";
  * - Batches messageCount updates
  * - Reduces database writes significantly
  */
-export const userActivityMiddleware: Middleware<Context> = async (
+export const userActivityMiddleware: Middleware<IMyContext> = async (
   ctx,
   next
 ): Promise<void> => {

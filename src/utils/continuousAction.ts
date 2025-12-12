@@ -1,7 +1,6 @@
-import { Context } from "telegraf";
 import { BotActionType } from "./botActions";
 import logger from "../config/logger";
-
+import { IMyContext } from "@/interfaces/IMyContext";
 /**
  * Manages continuous bot actions with interval control
  * Automatically sends action at intervals and can be stopped/replaced
@@ -12,13 +11,13 @@ class ContinuousActionManager {
 
   /**
    * Start sending continuous action
-   * @param ctx - Telegraf context
+   * @param ctx - IMyContext
    * @param action - Action type to send
    * @param intervalMs - Interval in milliseconds (default: 5000)
    * @returns Function to stop the action
    */
   start(
-    ctx: Context,
+    ctx: IMyContext,
     action: BotActionType = "typing",
     intervalMs: number = this.DEFAULT_INTERVAL_MS
   ): () => void {
@@ -93,13 +92,13 @@ export const continuousAction = new ContinuousActionManager();
 
 /**
  * Helper function to start continuous action and get stop function
- * @param ctx - Telegraf context
+ * @param ctx - IMyContext
  * @param action - Action type (default: "typing")
  * @param intervalMs - Interval in milliseconds (default: 5000)
  * @returns Function to stop the action
  */
 export function startContinuousAction(
-  ctx: Context,
+  ctx: IMyContext,
   action: BotActionType = "typing",
   intervalMs?: number
 ): () => void {
@@ -108,9 +107,9 @@ export function startContinuousAction(
 
 /**
  * Helper function to stop continuous action for a chat
- * @param ctx - Telegraf context
+ * @param ctx - IMyContext
  */
-export function stopContinuousAction(ctx: Context): void {
+export function stopContinuousAction(ctx: IMyContext): void {
   const chatId = ctx.chat?.id;
   if (chatId) {
     continuousAction.stop(chatId);

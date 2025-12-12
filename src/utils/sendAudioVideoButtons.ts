@@ -1,13 +1,11 @@
-import { Context, Markup } from "telegraf";
+import { Context } from "telegraf";
+import { Markup } from "telegraf";
 
-export const sendAudioVideoButtons = async (
-  ctx: Context,
-  url: string
-): Promise<void> => {
+export const sendAudioVideoButtons = async (ctx: Context): Promise<void> => {
   const keyboard = Markup.inlineKeyboard([
     [
-      Markup.button.callback("📹 Video", url),
-      Markup.button.callback("🎵 Audio", url),
+      Markup.button.callback("📹 Video", "video"),
+      Markup.button.callback("🎵 Audio", "audio"),
     ],
   ]);
 

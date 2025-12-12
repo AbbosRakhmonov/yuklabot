@@ -1,10 +1,10 @@
-import { Context } from "telegraf";
 import { showBotAction } from "../utils/botActions";
 import logger from "../config/logger";
 import { Messages } from "../utils/messages";
 import { MESSAGES } from "@/constants";
+import { IMyContext } from "@/interfaces/IMyContext";
 
-export const startCommand = async (ctx: Context): Promise<void> => {
+export const startCommand = async (ctx: IMyContext): Promise<void> => {
   try {
     // Show typing action
     await showBotAction(ctx, "typing");

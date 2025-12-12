@@ -1,8 +1,9 @@
 import express, { Express } from "express";
 import { Telegraf } from "telegraf";
 import logger from "./logger";
+import { IMyContext } from "@/interfaces/IMyContext";
 
-export const createWebhookServer = (bot: Telegraf): Express => {
+export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
   const app = express();
 
   // Middleware to parse JSON
@@ -27,7 +28,7 @@ export const createWebhookServer = (bot: Telegraf): Express => {
 };
 
 export const setWebhook = async (
-  bot: Telegraf,
+  bot: Telegraf<IMyContext>,
   webhookUrl: string
 ): Promise<void> => {
   try {
@@ -44,7 +45,9 @@ export const setWebhook = async (
   }
 };
 
-export const deleteWebhook = async (bot: Telegraf): Promise<void> => {
+export const deleteWebhook = async (
+  bot: Telegraf<IMyContext>
+): Promise<void> => {
   try {
     await bot.telegram.deleteWebhook();
     logger.info("Webhook deleted");

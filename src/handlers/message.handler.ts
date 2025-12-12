@@ -1,4 +1,3 @@
-import { Context } from "telegraf";
 import { isValidUrl } from "../helpers/isValidUrl";
 import logger from "../config/logger";
 import {
@@ -7,11 +6,14 @@ import {
 } from "../utils/continuousAction";
 import { MESSAGES } from "@/constants";
 import { getPlatformByUrl } from "@/helpers";
+import { IMyContext } from "@/interfaces/IMyContext";
+import { EPlatform } from "@/enums/EPlatform";
+import { YOUTUBE_SCENE_NAME } from "@/scenes/youtube/constants";
 
 /**
  * Handle text messages from users
  */
-export const handleTextMessage = async (ctx: Context): Promise<void> => {
+export const handleTextMessage = async (ctx: IMyContext): Promise<void> => {
   // Start continuous typing action
   startContinuousAction(ctx, "typing");
 
@@ -33,9 +35,21 @@ export const handleTextMessage = async (ctx: Context): Promise<void> => {
 
     await ctx.reply(`📝 Xabaringiz qabul qilindi! ✅`);
 
-    await getPlatformByUrl(text);
-    // start scense by platform
-    throw new Error(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
+    const platform = await getPlatformByUrl(text);
+
+    if (ctx.session && ctx.session.__scenes) {
+      ctx.session.__scenes.url = text;
+    } else {
+      throw new Error(MESSAGES.ERROR.NO_SESSION);
+    }
+
+    switch (platform) {
+      case EPlatform.YOUTUBE:
+        await ctx.scene.enter(YOUTUBE_SCENE_NAME);
+        break;
+      default:
+        throw new Error(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
+    }
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : MESSAGES.ERROR.GENERIC;
