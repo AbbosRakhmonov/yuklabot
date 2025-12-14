@@ -33,7 +33,7 @@ export const handleTextMessage = async (ctx: IMyContext): Promise<void> => {
 
     logger.info("Text message received", { text, userId: ctx.from?.id });
 
-    await ctx.reply(`📝 Xabaringiz qabul qilindi! ✅`);
+    await ctx.react('👀');
 
     const platform = await getPlatformByUrl(text);
 

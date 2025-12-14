@@ -870,6 +870,11 @@ file-stream-rotator@^0.6.1:
   dependencies:
     moment "^2.29.1"
 
+filesize@^11.0.13:
+  version "11.0.13"
+  resolved "https://registry.yarnpkg.com/filesize/-/filesize-11.0.13.tgz#8e61c5c4e8d7463c71d573c4f8051fb1ba4ff883"
+  integrity sha512-mYJ/qXKvREuO0uH8LTQJ6v7GsUvVOguqxg2VTwQUkyTPXXRRWPdjuUPVqdBrJQhvci48OHlNGRnux+Slr2Rnvw==
+
 finalhandler@^2.1.0:
   version "2.1.1"
   resolved "https://registry.npmjs.org/finalhandler/-/finalhandler-2.1.1.tgz"

@@ -7,10 +7,10 @@ export interface IYoutubeData {
   channel: string;
   view_count: number;
   media_type?: string; // "video" (not always present)
-  formats: Format[];
+  formats: IYoutubeFormat[];
 }
 
-interface Format {
+export interface IYoutubeFormat {
   format_id: string;
   ext: string;
   filesize?: number;

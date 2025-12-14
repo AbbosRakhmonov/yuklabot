@@ -11,6 +11,8 @@ export const MESSAGES = {
     NO_SESSION: "Sessiya topilmadi. Iltimos, qayta urining.",
   },
   INFO: {
+    ANALYZING: "Analiz qilinmoqda...",
+    VIDEO_QUALITY: "Video sifatini tanlang, past sifatdan yuqori sifatga qarab o'sib boradi",
     DOWNLOADING_VIDEO: "Video yuklanmoqda...",
   },
   SUCCESS: {
@@ -19,6 +21,3 @@ export const MESSAGES = {
 } as const;
 
 export const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
-export const SUPPORTED_VIDEO_FORMATS = ["mp4", "webm", "mov"];
-export const SUPPORTED_AUDIO_FORMATS = ["m4a", "mp3", "opus", "aac"];
-export const PREFERRED_VIDEO_CODEC = "h264"; // avc1
