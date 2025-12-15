@@ -12,8 +12,11 @@ export const MESSAGES = {
   },
   INFO: {
     ANALYZING: "Analiz qilinmoqda...",
-    VIDEO_QUALITY: "Video sifatini tanlang, past sifatdan yuqori sifatga qarab o'sib boradi",
+    VIDEO_QUALITY:
+      "Video sifatini tanlang, past sifatdan yuqori sifatga qarab o'sib boradi",
     DOWNLOADING_VIDEO: "Video yuklanmoqda...",
+    DOWNLOADING_AUDIO: "Audio yuklanmoqda...",
+    SCENE_CANCELLED: "Operatsiya bekor qilindi.",
   },
   SUCCESS: {
     OPERATION_COMPLETE: "Amal muvaffaqiyatli amalga oshirildi.",

@@ -14,6 +14,11 @@ import { YOUTUBE_SCENE_NAME } from "@/scenes/youtube/constants";
  * Handle text messages from users
  */
 export const handleTextMessage = async (ctx: IMyContext): Promise<void> => {
+  // Skip if user is already in a scene - let the scene handle the message
+  if (ctx.scene.current) {
+    return;
+  }
+
   // Start continuous typing action
   startContinuousAction(ctx, "typing");
 
@@ -33,7 +38,7 @@ export const handleTextMessage = async (ctx: IMyContext): Promise<void> => {
 
     logger.info("Text message received", { text, userId: ctx.from?.id });
 
-    await ctx.react('👀');
+    await ctx.react("👀");
 
     const platform = await getPlatformByUrl(text);
 

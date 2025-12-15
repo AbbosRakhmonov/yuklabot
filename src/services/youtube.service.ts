@@ -16,10 +16,9 @@ export class YoutubeService {
     this.url = url;
   }
 
-  getInfo(
-    matchFilters: string[] = []): Promise<IYoutubeData> {
+  getInfo(matchFilters: string[] = []): Promise<IYoutubeData> {
     return new Promise((resolve, reject) => {
-      const args = [this.url, ...YOUTUBE_GET_INFO_ARGS, ...matchFilters,];
+      const args = [this.url, ...YOUTUBE_GET_INFO_ARGS, ...matchFilters];
 
       const childProcess = spawn(config.ytdlp, args);
 
@@ -45,7 +44,8 @@ export class YoutubeService {
           } catch (error: unknown) {
             reject(
               new Error(
-                `Failed to parse ytdlp output as JSON: ${error instanceof Error ? error.message : String(error)
+                `Failed to parse ytdlp output as JSON: ${
+                  error instanceof Error ? error.message : String(error)
                 }`
               )
             );
@@ -61,10 +61,15 @@ export class YoutubeService {
   }
 
   getVideoFormats(): IYoutubeFormat[] {
-    const filtered = this.data?.formats?.filter(
-      (f) => f.vcodec !== "none" && f.height && f.height >= 144 &&
-        f.filesize && f.filesize <= MAX_FILE_SIZE
-    ) ?? [];
+    const filtered =
+      this.data?.formats?.filter(
+        (f) =>
+          f.vcodec !== "none" &&
+          f.height &&
+          f.height >= 144 &&
+          f.filesize &&
+          f.filesize <= MAX_FILE_SIZE
+      ) ?? [];
 
     const seenFormatNotes = new Set<string>();
     return filtered.filter((f) => {
@@ -84,22 +89,23 @@ export class YoutubeService {
       fs.mkdirSync(downloadDir, { recursive: true });
     }
 
-    const downloadArgs = YOUTUBE_GET_INFO_ARGS.filter(arg => arg !== '-t');
-
     const timeStamp = myDayjs().format("YYYY-MM-DD_HH-mm-ss");
     const folderName = `${timeStamp}_${this.data?.id}`;
 
     fs.mkdirSync(path.join(downloadDir, folderName), { recursive: true });
     const downloadPath = path.join(downloadDir, folderName);
-    
+
     const args = [
       this.url,
-      ...downloadArgs,
-      "-f", `bv[height=${height}]+ba`,
-      "--merge-output-format", "mp4",
-      "-P", downloadPath,
-      "-o", `%(title)s.%(ext)s`,
-      "--print", "after_move:filepath" // Get filepath after download completes
+      ...YOUTUBE_GET_INFO_ARGS,
+      "-f",
+      `bv[height=${height}]+ba`,
+      "-t",
+      "mp4",
+      "-P",
+      downloadPath,
+      "-o",
+      `%(title)s.%(ext)s`,
     ];
 
     const childProcess = spawn(config.ytdlp, args);
@@ -119,16 +125,53 @@ export class YoutubeService {
         if (code === 0) {
           resolve(folderName);
         } else {
-          reject(new Error(`ytdlp process exited with code ${code}: ${stderr}`));
+          reject(
+            new Error(`ytdlp process exited with code ${code}: ${stderr}`)
+          );
         }
       });
     });
   }
 
-  getAudioFormats(): IYoutubeFormat[] {
-    return this.data?.formats?.filter(
-      (f) => f.vcodec === "none" && f.acodec !== "none"
-    ) ?? [];
+  downloadAudio(): Promise<string> {
+    const downloadDir = config.downloadDir;
+    if (!fs.existsSync(downloadDir)) {
+      fs.mkdirSync(downloadDir, { recursive: true });
+    }
+    const timeStamp = myDayjs().format("YYYY-MM-DD_HH-mm-ss");
+    const folderName = `${timeStamp}_${this.data?.id}`;
+    fs.mkdirSync(path.join(downloadDir, folderName), { recursive: true });
+    const downloadPath = path.join(downloadDir, folderName);
+    const args = [
+      this.url,
+      ...YOUTUBE_GET_INFO_ARGS,
+      "--embed-metadata",
+      "--embed-thumbnail",
+      "-f",
+      "ba",
+      "-t",
+      "mp3",
+      "-P",
+      downloadPath,
+      "-o",
+      `%(title)s.%(ext)s`,
+    ];
+    const childProcess = spawn(config.ytdlp, args);
+    return new Promise((resolve, reject) => {
+      let stderr: string = "";
+      childProcess.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+      childProcess.on("close", (code) => {
+        if (code === 0) {
+          resolve(folderName);
+        } else {
+          reject(
+            new Error(`ytdlp process exited with code ${code}: ${stderr}`)
+          );
+        }
+      });
+    });
   }
 
   // downloadVideo(format: string): Promise<void> {
