@@ -17,6 +17,8 @@ export const MESSAGES = {
     DOWNLOADING_VIDEO: "Video yuklanmoqda...",
     DOWNLOADING_AUDIO: "Audio yuklanmoqda...",
     SCENE_CANCELLED: "Operatsiya bekor qilindi.",
+    OPERATION_IN_PROGRESS:
+      "Operatsiya bajarilmoqda. Iltimos, kuting yoki uni bekor qiling.",
   },
   SUCCESS: {
     OPERATION_COMPLETE: "Amal muvaffaqiyatli amalga oshirildi.",
@@ -24,3 +26,5 @@ export const MESSAGES = {
 } as const;
 
 export const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+
+export const CANCEL_BUTTON_TEXT = "❌ Bekor qilish";

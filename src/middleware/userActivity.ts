@@ -110,26 +110,47 @@ export const userActivityMiddleware: Middleware<IMyContext> = async (
         };
       }
 
-      // Update user in database (non-blocking)
-      User.findOneAndUpdate(
-        { telegramId: userId },
-        {
-          ...updateData,
-          $setOnInsert: { firstSeenAt: now },
-        },
-        { upsert: true, setDefaultsOnInsert: true }
-      ).catch((error: unknown) => {
+      // Update user in database and get the MongoDB ID
+      try {
+        const userDoc = await User.findOneAndUpdate(
+          { telegramId: userId },
+          {
+            ...updateData,
+            $setOnInsert: { firstSeenAt: now },
+          },
+          { upsert: true, setDefaultsOnInsert: true, new: true }
+        );
+        // Store MongoDB ID in context
+        if (userDoc && userDoc._id) {
+          ctx.userMongoId = userDoc._id;
+        }
+      } catch (error: unknown) {
         logger.error("Error updating user activity", { error, userId });
         // Re-add pending updates if update failed
         if (pending) {
           userActivityCache.addPendingUpdate(userId, pending);
         }
-      });
+      }
     } else {
       // Just add to cache, don't write to DB yet (throttled)
       userActivityCache.addPendingUpdate(userId, {
         messageCount: 1,
       });
+
+      // Still fetch the MongoDB ID if not already set
+      if (!ctx.userMongoId) {
+        try {
+          const userDoc = await User.findOne({ telegramId: userId });
+          if (userDoc && userDoc._id) {
+            ctx.userMongoId = userDoc._id;
+          }
+        } catch (error: unknown) {
+          logger.error("Error fetching user for MongoDB ID", {
+            error,
+            userId,
+          });
+        }
+      }
     }
 
     await next();

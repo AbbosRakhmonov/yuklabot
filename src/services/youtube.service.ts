@@ -83,6 +83,7 @@ export class YoutubeService {
   }
 
   downloadVideo(height: string): Promise<string> {
+    this.formatId = height;
     const downloadDir = config.downloadDir;
 
     if (!fs.existsSync(downloadDir)) {

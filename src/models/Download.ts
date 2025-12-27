@@ -1,10 +1,9 @@
 import mongoose, { Schema } from "mongoose";
 import { IDownload } from "../interfaces/IDownload";
 import { EPlatform } from "../enums/EPlatform";
-import { EDownloadStatus } from "../enums/EDownloadStatus";
 import { EMediaType } from "../enums/EMediaType";
 
-const DownloadSchema: Schema = new Schema(
+export const DownloadSchema: Schema = new Schema<IDownload>(
   {
     user: {
       type: Schema.Types.ObjectId,
@@ -29,15 +28,6 @@ const DownloadSchema: Schema = new Schema(
       enum: EPlatform,
       required: true,
     },
-    status: {
-      type: String,
-      enum: EDownloadStatus,
-      required: true,
-    },
-    filePath: {
-      type: String,
-      required: true,
-    },
     fileName: {
       type: String,
       required: true,
@@ -54,15 +44,8 @@ const DownloadSchema: Schema = new Schema(
   },
   {
     timestamps: true,
+    discriminatorKey: "platform",
   }
 );
-
-// Indexes for common queries
-DownloadSchema.index({ user: 1, chatId: 1, messageId: 1 });
-DownloadSchema.index({ url: 1 });
-DownloadSchema.index({ platform: 1 });
-DownloadSchema.index({ status: 1 });
-DownloadSchema.index({ mediaType: 1 });
-DownloadSchema.index({ createdAt: -1 });
 
 export default mongoose.model<IDownload>("Download", DownloadSchema);

@@ -1,31 +1,27 @@
-import { MESSAGES } from "@/constants";
+import { CANCEL_BUTTON_TEXT, MESSAGES } from "@/constants";
 import { EMediaType } from "@/enums/EMediaType";
 import { IYoutubeFormat } from "@/interfaces/IYoutubeData";
-import { TYoutubeSceneContext } from "@/scenes/youtube/types/TYoutubeSceneContext";
+import { IMyContext } from "@/interfaces/IMyContext";
 import { YoutubeService } from "@/services";
 import { Markup } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
 import { CANCEL_BUTTON_CALLBACK } from "@/scenes/youtube/constants";
 import { youtubeStep4 } from "@/scenes/youtube/steps/youtube_step_4";
+import { handleCancelButton } from "@/scenes/helpers";
 
-export const youtubeStep2 = async (ctx: TYoutubeSceneContext) => {
+export const youtubeStep2 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
     await ctx.answerCbQuery();
-
     const type = ctx.callbackQuery.data;
 
-    // Handle cancel button
-    if (type === CANCEL_BUTTON_CALLBACK) {
-      await ctx.editMessageText(MESSAGES.INFO.SCENE_CANCELLED);
-      return ctx.scene.leave();
-    }
+    await handleCancelButton(ctx, type);
 
     await ctx.editMessageText(MESSAGES.INFO.ANALYZING);
 
-    const url = ctx.scene.session.url;
+    const url = ctx.wizard.state.url;
 
     const service = new YoutubeService(url);
-    ctx.scene.session.service = service;
+    ctx.wizard.state.service = service;
 
     let formats: IYoutubeFormat[] = [];
 
@@ -45,7 +41,7 @@ export const youtubeStep2 = async (ctx: TYoutubeSceneContext) => {
       Markup.button.callback(`🎥 ${f.format_note}`, f.height?.toString() ?? ""),
     ]);
     const cancelButton = [
-      Markup.button.callback("❌ Bekor qilish", CANCEL_BUTTON_CALLBACK),
+      Markup.button.callback(CANCEL_BUTTON_TEXT, CANCEL_BUTTON_CALLBACK),
     ];
     const keyboard = Markup.inlineKeyboard([...formatButtons, cancelButton]);
 

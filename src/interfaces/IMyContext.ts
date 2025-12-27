@@ -1,10 +1,14 @@
-import { YouTubeSceneSession } from "@/scenes/youtube/interfaces/IYoutubeSceneSession";
-import { Scenes } from "telegraf";
+import { IYouTubeState } from "@/scenes/youtube/interfaces/IYoutubeState";
+import mongoose from "mongoose";
+import { Context, Scenes } from "telegraf";
 
-type AllSessions = YouTubeSceneSession;
+type DownloadWizardState = IYouTubeState;
 
-export type IMyContext = Scenes.WizardContext<AllSessions> & {
-  session: {
-    __scenes: AllSessions;
+export interface IMyContext extends Context {
+  session: Scenes.WizardSession;
+  scene: Scenes.SceneContextScene<IMyContext, Scenes.WizardSessionData>;
+  wizard: Scenes.WizardContextWizard<IMyContext> & {
+    state: DownloadWizardState;
   };
-};
+  userMongoId?: mongoose.Types.ObjectId; // MongoDB _id of the user document
+}

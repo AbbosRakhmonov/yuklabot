@@ -17,14 +17,7 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_" },
       ],
-      "@typescript-eslint/explicit-function-return-type": "off",
-      // Disallow any type completely
       "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/no-unsafe-assignment": "warn",
-      "@typescript-eslint/no-unsafe-member-access": "error",
-      "@typescript-eslint/no-unsafe-call": "error",
-      "@typescript-eslint/no-unsafe-return": "error",
-      "@typescript-eslint/no-unsafe-argument": "error",
     },
   },
   {

@@ -47,14 +47,15 @@ async function main(): Promise<void> {
     // Create bot instance
     const bot = createBot();
 
+    bot.use(userActivityMiddleware);
+    bot.use(loggerMiddleware);
+
     // Middleware (order matters!)
     bot.use(session());
 
     bot.use(stage.middleware());
 
     // 3. Custom middleware (userActivity should be before logger)
-    bot.use(userActivityMiddleware);
-    bot.use(loggerMiddleware);
 
     // Commands
     bot.command("start", startCommand);
