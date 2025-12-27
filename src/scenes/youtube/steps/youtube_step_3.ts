@@ -1,6 +1,6 @@
 import { MESSAGES } from "@/constants";
 import { callbackQuery } from "telegraf/filters";
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
 import { config } from "@/config/config";
 import { Input } from "telegraf";
@@ -34,37 +34,40 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
 
     if (!result) {
       const message = await ctx.sendMessage(MESSAGES.INFO.DOWNLOADING_VIDEO);
-      const folderName = await ctx.wizard.state.service.downloadVideo(height);
-      startContinuousAction(ctx as IMyContext, "upload_video");
-      // get first file in folder
-      const filePath = path.join(
-        config.downloadDir,
-        folderName,
-        fs.readdirSync(path.join(config.downloadDir, folderName))[0]
-      );
-      await ctx.deleteMessage(message.message_id);
-      const videoStream = fs.createReadStream(filePath);
-      const sentMessage = await ctx.replyWithVideo(
-        Input.fromReadableStream(videoStream)
-      );
-      const fileName = path.basename(filePath);
-      const fileSize = fs.statSync(filePath).size;
-      // delete the folder inside config.downloadDir
-      fs.rmSync(path.join(config.downloadDir, folderName), { recursive: true });
 
-      // Create YoutubeDownload record
-      if (ctx.userMongoId) {
-        await YoutubeDownload.create({
-          user: ctx.userMongoId,
-          url: ctx.wizard.state.service.url,
-          chatId: ctx.chat?.id || ctx.from?.id || 0,
-          messageId: sentMessage.message_id,
-          platform: EPlatform.YOUTUBE,
-          fileName: fileName,
-          fileSize: fileSize,
-          mediaType: EMediaType.VIDEO,
-          height: Number(height),
-        });
+      try {
+        const folderName = await ctx.wizard.state.service.downloadVideo(height);
+        startContinuousAction(ctx as IMyContext, "upload_video");
+        // get first file in folder
+        const folderPath = path.join(config.downloadDir, folderName);
+        const files = await fs.readdir(folderPath);
+        const filePath = path.join(folderPath, files[0]);
+        await ctx.deleteMessage(message.message_id);
+        const videoStream = (await import("fs")).createReadStream(filePath);
+        const sentMessage = await ctx.replyWithVideo(
+          Input.fromReadableStream(videoStream)
+        );
+        const fileName = path.basename(filePath);
+        const stats = await fs.stat(filePath);
+        const fileSize = stats.size;
+
+        // Create YoutubeDownload record
+        if (ctx.userMongoId) {
+          await YoutubeDownload.create({
+            user: ctx.userMongoId,
+            url: ctx.wizard.state.service.url,
+            chatId: ctx.chat?.id || ctx.from?.id || 0,
+            messageId: sentMessage.message_id,
+            platform: EPlatform.YOUTUBE,
+            fileName: fileName,
+            fileSize: fileSize,
+            mediaType: EMediaType.VIDEO,
+            height: Number(height),
+          });
+        }
+      } finally {
+        // Always delete the folder inside config.downloadDir, even if an error occurred
+        await ctx.wizard.state.service.cleanupFolder();
       }
     }
   }
