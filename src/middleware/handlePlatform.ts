@@ -12,7 +12,7 @@ export const handlePlatform = async (ctx: IMyContext) => {
   if (!ctx.has(message("text")))
     throw new Error(MESSAGES.ERROR.INVALID_MESSAGE);
 
-  if (ctx.scene.current) {
+  if (ctx.scene?.current) {
     await ctx.reply(MESSAGES.INFO.OPERATION_IN_PROGRESS);
     return;
   }

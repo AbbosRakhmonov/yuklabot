@@ -53,13 +53,12 @@ async function main(): Promise<void> {
     bot.command("start", startCommand);
     bot.command("help", helpCommand);
 
-    // Message handlers
-    bot.on("message", handleTextMessage);
-
     bot.use(userActivityMiddleware);
     bot.use(loggerMiddleware);
 
     bot.use(stage.middleware());
+
+    bot.on("message", handleTextMessage);
 
     // Error handling
     bot.catch((err, ctx) => {

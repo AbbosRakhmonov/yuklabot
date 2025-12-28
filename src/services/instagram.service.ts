@@ -106,6 +106,14 @@ export class InstagramService {
                 (carouselItems[0].type === "story" ||
                   carouselItems[0].subcategory === "story"));
 
+            // Check if this is a reel (reels should not have carousel_media)
+            const isReel =
+              postMetadata?.type === "reel" ||
+              postMetadata?.subcategory === "reel" ||
+              (carouselItems.length > 0 &&
+                (carouselItems[0].type === "reel" ||
+                  carouselItems[0].subcategory === "reel"));
+
             if (isStory) {
               // For stories: use the first item to determine video/image type
               const storyData =
@@ -116,8 +124,18 @@ export class InstagramService {
                   // Don't add carousel_media for stories
                 };
               }
+            } else if (isReel) {
+              // For reels: use the first item (reels don't have carousel_media)
+              const reelData =
+                carouselItems.length > 0 ? carouselItems[0] : postMetadata;
+              if (reelData) {
+                jsonData = {
+                  ...reelData,
+                  // Don't add carousel_media for reels
+                };
+              }
             } else if (carouselItems.length > 0) {
-              // Carousel post: merge post metadata with carousel items
+              // Carousel post: merge post metadata with carousel items (only for POST type)
               if (postMetadata) {
                 // Use post metadata as base and add carousel items
                 jsonData = {
@@ -190,8 +208,12 @@ export class InstagramService {
         imageUrl = jsonData.display_url || jsonData.url || undefined;
       }
       // Don't add carousel_media for stories
+    } else if (detectedType === EMediaType.REEL) {
+      // For reels: don't add carousel_media
+      videoUrl = jsonData.video_url || undefined;
+      imageUrl = jsonData.url || jsonData.display_url;
     } else {
-      // For posts: include carousel_media if available
+      // For posts only: include carousel_media if available
       carouselMedia = this.parseCarouselMedia(jsonData);
       videoUrl = jsonData.video_url || undefined;
       imageUrl = jsonData.url || jsonData.display_url;
@@ -251,13 +273,18 @@ export class InstagramService {
 
   /**
    * Parse carousel media items
-   * Only for POST type - stories should not have carousel_media
+   * Only for POST type - stories and reels should not have carousel_media
    */
   private parseCarouselMedia(
     jsonData: IInstagramGalleryDlData
   ): IInstagramMediaItem[] | undefined {
     // Don't parse carousel_media for stories
     if (jsonData.type === "story" || jsonData.subcategory === "story") {
+      return undefined;
+    }
+
+    // Don't parse carousel_media for reels
+    if (jsonData.type === "reel" || jsonData.subcategory === "reel") {
       return undefined;
     }
 
