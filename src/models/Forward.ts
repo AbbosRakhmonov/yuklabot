@@ -34,7 +34,7 @@ const ForwardSchema: Schema = new Schema(
 // Indexes for common queries
 ForwardSchema.index({ user: 1, chatId: 1, messageId: 1 });
 ForwardSchema.index({ user: 1, createdAt: -1 });
-ForwardSchema.index({ download: 1 });
+ForwardSchema.index({ download: 1, createdAt: -1 }); // For counting copies per download
 ForwardSchema.index({ createdAt: -1 });
 
 export default mongoose.model<IForward>("Forward", ForwardSchema);

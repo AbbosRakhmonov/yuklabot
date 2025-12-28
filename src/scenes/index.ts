@@ -1,5 +1,6 @@
 import { Scenes } from "telegraf";
 import { youtubeScene } from "./youtube";
+import { instagramScene } from "./instagram";
 import { MESSAGES } from "@/constants";
 import logger from "@/config/logger";
 import { stopContinuousAction } from "@/utils/continuousAction";
@@ -7,7 +8,7 @@ import { IMyContext } from "@/interfaces/IMyContext";
 import { message } from "telegraf/filters";
 import { handlePlatform } from "@/middleware/handlePlatform";
 
-export const stage = new Scenes.Stage([youtubeScene]);
+export const stage = new Scenes.Stage([youtubeScene, instagramScene]);
 
 stage.use(async (ctx: IMyContext, next) => {
   try {
@@ -22,7 +23,7 @@ stage.use(async (ctx: IMyContext, next) => {
 
     const errorMessage =
       error instanceof Error ? error.message : MESSAGES.ERROR.GENERIC;
-    logger.error("Error handling text message", {
+    logger.error("Error in scene", {
       error: errorMessage,
       userId: ctx.from?.id,
     });

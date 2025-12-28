@@ -1,12 +1,10 @@
-import { Document } from "mongoose";
-import { IUser } from "./IUser";
-import { IDownload } from "./IDownload";
+import mongoose, { Document } from "mongoose";
 
 export interface IForward extends Document {
-  user: IUser;
+  user: mongoose.Types.ObjectId;
   chatId: number;
-  messageId: number;
-  download: IDownload;
+  messageId: number; // The new copied message ID
+  download: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }

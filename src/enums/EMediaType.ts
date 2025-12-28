@@ -3,4 +3,7 @@ export enum EMediaType {
   AUDIO = "audio",
   IMAGE = "image",
   DOCUMENT = "document",
+  REEL = "reel",
+  STORY = "story",
+  POST = "post",
 }

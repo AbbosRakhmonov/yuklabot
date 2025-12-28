@@ -28,14 +28,8 @@ export const DownloadSchema: Schema = new Schema<IDownload>(
       enum: EPlatform,
       required: true,
     },
-    fileName: {
-      type: String,
-      required: true,
-    },
-    fileSize: {
-      type: Number,
-      required: true,
-    },
+    fileName: String,
+    fileSize: Number,
     mediaType: {
       type: String,
       enum: EMediaType,

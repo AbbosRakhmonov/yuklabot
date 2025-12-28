@@ -24,9 +24,11 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
 
     await ctx.deleteMessage();
 
+    const service = ctx.wizard.state.youtube.service;
+
     const result = await findAndSendMedia(ctx, YoutubeDownload, {
       user: ctx.userMongoId,
-      url: ctx.wizard.state.service.url,
+      url: service.url,
       platform: EPlatform.YOUTUBE,
       height: Number(height),
       mediaType: EMediaType.VIDEO,
@@ -35,9 +37,10 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
     if (!result) {
       const message = await ctx.sendMessage(MESSAGES.INFO.DOWNLOADING_VIDEO);
 
+      let stopVideoAction: (() => void) | null = null;
       try {
-        const folderName = await ctx.wizard.state.service.downloadVideo(height);
-        startContinuousAction(ctx as IMyContext, "upload_video");
+        const folderName = await service.downloadVideo(height);
+        stopVideoAction = startContinuousAction(ctx, "upload_video");
         // get first file in folder
         const folderPath = path.join(config.downloadDir, folderName);
         const files = await fs.readdir(folderPath);
@@ -47,6 +50,9 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
         const sentMessage = await ctx.replyWithVideo(
           Input.fromReadableStream(videoStream)
         );
+        stopVideoAction();
+        stopVideoAction = null;
+
         const fileName = path.basename(filePath);
         const stats = await fs.stat(filePath);
         const fileSize = stats.size;
@@ -55,7 +61,7 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
         if (ctx.userMongoId) {
           await YoutubeDownload.create({
             user: ctx.userMongoId,
-            url: ctx.wizard.state.service.url,
+            url: service.url,
             chatId: ctx.chat?.id || ctx.from?.id || 0,
             messageId: sentMessage.message_id,
             platform: EPlatform.YOUTUBE,
@@ -65,9 +71,14 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
             height: Number(height),
           });
         }
+      } catch (error) {
+        if (stopVideoAction) {
+          stopVideoAction();
+        }
+        throw error;
       } finally {
         // Always delete the folder inside config.downloadDir, even if an error occurred
-        await ctx.wizard.state.service.cleanupFolder();
+        await service.cleanupFolder();
       }
     }
   }

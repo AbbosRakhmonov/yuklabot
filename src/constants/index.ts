@@ -19,6 +19,7 @@ export const MESSAGES = {
     SCENE_CANCELLED: "Operatsiya bekor qilindi.",
     OPERATION_IN_PROGRESS:
       "Operatsiya bajarilmoqda. Iltimos, kuting yoki uni bekor qiling.",
+    DOWNLOADING_IMAGE: "Rasm yuklanmoqda...",
   },
   SUCCESS: {
     OPERATION_COMPLETE: "Amal muvaffaqiyatli amalga oshirildi.",

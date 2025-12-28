@@ -18,10 +18,10 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
 
     await ctx.editMessageText(MESSAGES.INFO.ANALYZING);
 
-    const url = ctx.wizard.state.url;
+    const url = ctx.wizard.state.youtube.url;
 
     const service = new YoutubeService(url);
-    ctx.wizard.state.service = service;
+    ctx.wizard.state.youtube.service = service;
 
     let formats: IYoutubeFormat[] = [];
 

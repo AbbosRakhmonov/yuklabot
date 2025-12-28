@@ -1,4 +1,6 @@
-import dotenv from "dotenv";
+// Load environment variables FIRST, before any other imports
+import "./config/env";
+
 import { session } from "telegraf";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { createBot } from "./config/bot";
@@ -15,9 +17,6 @@ import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
 import { handleTextMessage } from "./handlers/message.handler";
 import { stage } from "./scenes";
-
-// Load environment variables
-dotenv.config();
 
 // Global error handlers to prevent bot from crashing
 process.on("uncaughtException", (error: Error) => {
@@ -47,15 +46,8 @@ async function main(): Promise<void> {
     // Create bot instance
     const bot = createBot();
 
-    bot.use(userActivityMiddleware);
-    bot.use(loggerMiddleware);
-
     // Middleware (order matters!)
     bot.use(session());
-
-    bot.use(stage.middleware());
-
-    // 3. Custom middleware (userActivity should be before logger)
 
     // Commands
     bot.command("start", startCommand);
@@ -63,6 +55,11 @@ async function main(): Promise<void> {
 
     // Message handlers
     bot.on("message", handleTextMessage);
+
+    bot.use(userActivityMiddleware);
+    bot.use(loggerMiddleware);
+
+    bot.use(stage.middleware());
 
     // Error handling
     bot.catch((err, ctx) => {

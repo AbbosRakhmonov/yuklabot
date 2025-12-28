@@ -1,4 +1,6 @@
+// src/config/config.ts
 export const config = {
+  botName: process.env.BOT_NAME || "YuklabBot",
   timezone: process.env.TZ || "Asia/Tashkent",
   telegram: {
     apiRoot: process.env.TELEGRAM_API_URL || "https://api.telegram.org",
@@ -13,6 +15,9 @@ export const config = {
     port: parseInt(process.env.PORT || process.env.WEBHOOK_PORT || "3000", 10),
   },
   ytdlp: process.env.YTDLP_PATH || "yt-dlp",
+  galleryDl: process.env.GALLERY_DL_PATH || "gallery-dl",
+  ffmpeg: process.env.FFMPEG_PATH || "ffmpeg",
+  instagramCookies: process.env.INSTAGRAM_COOKIES_PATH || undefined,
   logLevel: process.env.LOG_LEVEL || "info",
   downloadDir: process.env.DOWNLOAD_DIR || "downloads",
 };

@@ -1,9 +1,11 @@
+// src/middleware/handlePlatform.ts
 import { MESSAGES } from "@/constants";
 import logger from "@/config/logger";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { getPlatformByUrl, isValidUrl } from "@/helpers";
 import { EPlatform } from "@/enums/EPlatform";
 import { YOUTUBE_SCENE_NAME } from "@/scenes/youtube/constants";
+import { INSTAGRAM_SCENE_NAME } from "@/scenes/instagram/constants";
 import { message } from "telegraf/filters";
 
 export const handlePlatform = async (ctx: IMyContext) => {
@@ -32,7 +34,10 @@ export const handlePlatform = async (ctx: IMyContext) => {
 
   switch (platform) {
     case EPlatform.YOUTUBE:
-      await ctx.scene.enter(YOUTUBE_SCENE_NAME, { url: text });
+      await ctx.scene.enter(YOUTUBE_SCENE_NAME, { youtube: { url: text } });
+      break;
+    case EPlatform.INSTAGRAM:
+      await ctx.scene.enter(INSTAGRAM_SCENE_NAME, { instagram: { url: text } });
       break;
     default:
       throw new Error(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
