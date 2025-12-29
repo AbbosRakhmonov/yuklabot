@@ -25,7 +25,10 @@ export const handlePlatform = async (ctx: IMyContext) => {
 
   logger.info("Text message received", { text, userId: ctx.from?.id });
 
-  await ctx.react("👀");
+  // Fire-and-forget: don't await to avoid blocking other users
+  ctx.react("👀").catch((error) => {
+    logger.error("Error sending reaction", { error, userId: ctx.from?.id });
+  });
 
   const platform = await getPlatformByUrl(text);
 
