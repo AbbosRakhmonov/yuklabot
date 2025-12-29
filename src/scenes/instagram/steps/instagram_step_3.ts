@@ -21,8 +21,6 @@ export const instagramStep3 = async (ctx: IMyContext) => {
     });
 
     if (!result) {
-      console.log(service.data);
-
       const stopVideoAction = startContinuousAction(ctx, "upload_video");
       try {
         const sentMessage = await ctx.replyWithVideo(
