@@ -28,6 +28,7 @@ export const createWebhookServer = async (
   const webhookOptions = {
     domain: webhookDomain,
     path: webhookPath,
+    drop_pending_updates: true,
     ...(config.webhook.secretToken && {
       secret_token: config.webhook.secretToken,
     }),
