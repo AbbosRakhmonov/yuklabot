@@ -1,4 +1,3 @@
-// Load environment variables FIRST, before any other imports
 import "./config/env";
 
 import { session } from "telegraf";
@@ -8,11 +7,7 @@ import { startCommand } from "./commands/start.command";
 import logger from "./config/logger";
 import { loggerMiddleware } from "./middleware/logger";
 import { userActivityMiddleware } from "./middleware/userActivity";
-import {
-  createWebhookServer,
-  setWebhook,
-  deleteWebhook,
-} from "./config/webhook";
+import { createWebhookServer, deleteWebhook } from "./config/webhook";
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
 import { handleTextMessage } from "./handlers/message.handler";
@@ -91,11 +86,8 @@ async function main(): Promise<void> {
         throw new Error("WEBHOOK_URL is required when WEBHOOK_ENABLED is true");
       }
 
-      // Create Express server
-      const app = createWebhookServer(bot);
-
-      // Set webhook
-      await setWebhook(bot, config.webhook.url);
+      // Create Express server with bot.createWebhook()
+      const app = await createWebhookServer(bot, config.webhook.url);
 
       // Start server
       app.listen(config.webhook.port, "0.0.0.0", () => {
@@ -103,7 +95,10 @@ async function main(): Promise<void> {
           `✅ Webhook server is running on port ${config.webhook.port}`
         );
         logger.info(
-          `✅ Webhook URL: ${config.webhook.url}${config.webhook.path}`
+          `✅ Webhook URL: ${config.webhook.url}${
+            config.webhook.path ||
+            `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`
+          }`
         );
       });
     } else {
