@@ -40,14 +40,14 @@ process.on(
 
 async function main(): Promise<void> {
   try {
-    // Connect to MongoDB
-    await connectDatabase();
+    // Connect to MongoDB and get session store
+    const store = await connectDatabase();
 
     // Create bot instance
     const bot = createBot();
 
     // Middleware (order matters!)
-    bot.use(session());
+    bot.use(session({ store }));
 
     // Commands
     bot.command("start", startCommand);
