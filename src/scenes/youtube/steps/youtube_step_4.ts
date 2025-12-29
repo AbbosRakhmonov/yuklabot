@@ -8,9 +8,16 @@ import YoutubeDownload from "@/models/YoutubeDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
+import { YoutubeService } from "@/services";
 
 export const youtubeStep4 = async (ctx: IMyContext) => {
-  const service = ctx.wizard.state.youtube.service;
+  // Get service from state or recreate it
+  const serviceState = ctx.wizard.state.youtube.service;
+  const service = new YoutubeService(serviceState.url);
+  // Restore state data
+  service.data = serviceState.data;
+  service.formatId = serviceState.formatId;
+  service.folderName = serviceState.folderName;
 
   const result = await findAndSendMedia(ctx, YoutubeDownload, {
     user: ctx.userMongoId,
@@ -52,7 +59,7 @@ export const youtubeStep4 = async (ctx: IMyContext) => {
         });
       }
     } finally {
-      // Always delete the folder inside config.downloadDir, even if an error occurred
+      // Now cleanupFolder will work
       await service.cleanupFolder();
     }
   }
