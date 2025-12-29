@@ -23,21 +23,32 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
   // Add secret token verification if configured
   const secretToken = config.webhook.secretToken || "";
 
-  if (secretToken) {
-    app.use(webhookPath, (req, res, next) => {
+  // Create webhook handler with optional secret token verification
+  const webhookHandler = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    // If secret token is configured, verify it
+    if (secretToken) {
       const token = req.headers["x-telegram-bot-api-secret-token"];
       if (token !== secretToken) {
-        logger.warn("Unauthorized webhook request");
+        logger.warn("Unauthorized webhook request", {
+          ip: req.ip,
+          path: req.path,
+        });
         return res.status(401).send("Unauthorized");
       }
-      return next();
-    });
-  }
+    }
+    // Pass to bot webhook callback
+    return bot.webhookCallback()(req, res, next);
+  };
 
-  // Set webhook endpoint - webhookCallback returns an Express middleware
-  app.post(webhookPath, bot.webhookCallback());
+  // Set webhook endpoint - only POST requests
+  app.post(webhookPath, webhookHandler);
 
   logger.info(`Webhook server configured at path: ${webhookPath}`);
+  logger.info(`Secret token: ${secretToken ? "Enabled" : "Disabled"}`);
 
   return app;
 };
