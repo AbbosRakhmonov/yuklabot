@@ -98,7 +98,7 @@ async function main(): Promise<void> {
       await setWebhook(bot, config.webhook.url);
 
       // Start server
-      app.listen(config.webhook.port, () => {
+      app.listen(config.webhook.port, "0.0.0.0", () => {
         logger.info(
           `✅ Webhook server is running on port ${config.webhook.port}`
         );
