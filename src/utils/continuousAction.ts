@@ -23,7 +23,7 @@ class ContinuousActionManager {
   ): () => void {
     const chatId = ctx.chat?.id;
     if (!chatId) {
-      logger.warn("Cannot start continuous action: no chat ID");
+      logger.warning("Cannot start continuous action: no chat ID");
       return () => {}; // Return no-op function
     }
 

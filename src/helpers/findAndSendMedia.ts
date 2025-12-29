@@ -50,7 +50,7 @@ export const findAndSendMedia = async <T extends IDownload>(
     const download = await model.findOne(processedParams).lean();
 
     if (!download) {
-      logger.warn("Download not found", { findParams });
+      logger.warning("Download not found", { findParams });
       throw new Error("Media not found.");
     }
 
@@ -65,10 +65,13 @@ export const findAndSendMedia = async <T extends IDownload>(
       copiedMessageId: number
     ): Promise<void> => {
       if (!ctx.userMongoId) {
-        logger.warn("Cannot save forward record: userMongoId not available", {
-          downloadId: download._id,
-          userId: ctx.from?.id,
-        });
+        logger.warning(
+          "Cannot save forward record: userMongoId not available",
+          {
+            downloadId: download._id,
+            userId: ctx.from?.id,
+          }
+        );
         return;
       }
 

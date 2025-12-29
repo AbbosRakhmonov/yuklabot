@@ -27,7 +27,7 @@ export const instagramStep5 = async (ctx: IMyContext) => {
   if (!carouselMedia || carouselMedia.length === 0) return ctx.scene.leave();
 
   if (!ctx.userMongoId || !ctx.chat?.id) {
-    logger.warn("Missing userMongoId or chatId for carousel post");
+    logger.warning("Missing userMongoId or chatId for carousel post");
     return ctx.scene.leave();
   }
 
@@ -135,7 +135,7 @@ export const instagramStep5 = async (ctx: IMyContext) => {
       });
     }
   } else {
-    logger.warn("No carousel items were sent successfully", {
+    logger.warning("No carousel items were sent successfully", {
       url: service.url,
       totalItems: carouselMedia.length,
       userId: ctx.from?.id,

@@ -33,7 +33,7 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
     if (secretToken) {
       const token = req.headers["x-telegram-bot-api-secret-token"];
       if (token !== secretToken) {
-        logger.warn("Unauthorized webhook request", {
+        logger.warning("Unauthorized webhook request", {
           ip: req.ip,
           path: req.path,
         });
