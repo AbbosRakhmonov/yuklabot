@@ -15,71 +15,31 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
     res.status(200).json({ status: "ok" });
   });
 
-  // Webhook secret path from environment or default
+  // Get webhook path
   const webhookPath =
     config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
-
-  logger.info(`Webhook path: ${webhookPath}`);
-  logger.info(`BOT_TOKEN prefix: ${process.env.BOT_TOKEN?.split(":")[0]}`);
-
-  // Add secret token verification if configured
   const secretToken = config.webhook.secretToken || "";
 
-  // Create webhook handler with optional secret token verification
-  const webhookHandler = (
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction
-  ) => {
-    logger.info("Webhook request received", {
-      path: req.path,
-      originalUrl: req.originalUrl,
-      method: req.method,
-    });
+  logger.info(`Webhook path: ${webhookPath}`);
 
-    // If secret token is configured, verify it
-    if (secretToken) {
+  // If secret token is configured, add verification middleware BEFORE webhook callback
+  if (secretToken) {
+    app.post(webhookPath, (req, res, next) => {
       const token = req.headers["x-telegram-bot-api-secret-token"];
       if (token !== secretToken) {
-        logger.warning("Unauthorized webhook request", {
-          ip: req.ip,
-          path: req.path,
-        });
+        logger.warning("Unauthorized webhook request");
         return res.status(401).send("Unauthorized");
       }
-    }
+      return next();
+    });
+  }
 
-    // Pass to bot webhook callback
-    try {
-      const callback = bot.webhookCallback();
-      return callback(req, res, next);
-    } catch (error) {
-      logger.error("Error in webhook callback", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  };
+  // Register webhook callback - this handles the request/response automatically
+  // According to official docs: app.use(bot.webhookCallback(webhookPath))
+  app.post(webhookPath, bot.webhookCallback());
 
-  // Set webhook endpoint - only POST requests
-  app.post(webhookPath, webhookHandler);
-
-  logger.info(`✅ Registered POST route: ${webhookPath}`);
-
-  logger.info(`Webhook server configured at path: ${webhookPath}`);
+  logger.info(`✅ Webhook server configured at path: ${webhookPath}`);
   logger.info(`Secret token: ${secretToken ? "Enabled" : "Disabled"}`);
-
-  app.use((req, res) => {
-    logger.warning(`Route not found: ${req.method} ${req.path}`, {
-      expected: webhookPath,
-      received: req.path,
-    });
-    res.status(404).json({
-      error: "Not found",
-      expected: webhookPath,
-      received: req.path,
-    });
-  });
 
   return app;
 };
@@ -94,7 +54,6 @@ export const setWebhook = async (
     const fullWebhookUrl = `${webhookUrl}${webhookPath}`;
 
     const options: { secret_token?: string } = {};
-
     if (config.webhook.secretToken) {
       options.secret_token = config.webhook.secretToken;
     }
