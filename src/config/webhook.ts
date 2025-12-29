@@ -17,8 +17,10 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
 
   // Webhook secret path from environment or default
   const webhookPath =
-    process.env.WEBHOOK_PATH ||
-    `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
+    config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
+
+  logger.info(`Webhook path: ${webhookPath}`);
+  logger.info(`BOT_TOKEN prefix: ${process.env.BOT_TOKEN?.split(":")[0]}`);
 
   // Add secret token verification if configured
   const secretToken = config.webhook.secretToken || "";
@@ -29,6 +31,12 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
     res: express.Response,
     next: express.NextFunction
   ) => {
+    logger.info("Webhook request received", {
+      path: req.path,
+      originalUrl: req.originalUrl,
+      method: req.method,
+    });
+
     // If secret token is configured, verify it
     if (secretToken) {
       const token = req.headers["x-telegram-bot-api-secret-token"];
@@ -40,15 +48,38 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
         return res.status(401).send("Unauthorized");
       }
     }
+
     // Pass to bot webhook callback
-    return bot.webhookCallback()(req, res, next);
+    try {
+      const callback = bot.webhookCallback();
+      return callback(req, res, next);
+    } catch (error) {
+      logger.error("Error in webhook callback", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(500).json({ error: "Internal server error" });
+    }
   };
 
   // Set webhook endpoint - only POST requests
   app.post(webhookPath, webhookHandler);
 
+  logger.info(`✅ Registered POST route: ${webhookPath}`);
+
   logger.info(`Webhook server configured at path: ${webhookPath}`);
   logger.info(`Secret token: ${secretToken ? "Enabled" : "Disabled"}`);
+
+  app.use((req, res) => {
+    logger.warning(`Route not found: ${req.method} ${req.path}`, {
+      expected: webhookPath,
+      received: req.path,
+    });
+    res.status(404).json({
+      error: "Not found",
+      expected: webhookPath,
+      received: req.path,
+    });
+  });
 
   return app;
 };
