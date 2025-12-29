@@ -62,10 +62,13 @@ export const setWebhook = async (
       config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
     const fullWebhookUrl = `${webhookUrl}${webhookPath}`;
 
-    await bot.telegram.setWebhook(fullWebhookUrl, {
-      // Optional: Set secret token for security
-      secret_token: config.webhook.secretToken,
-    });
+    const options: { secret_token?: string } = {};
+
+    if (config.webhook.secretToken) {
+      options.secret_token = config.webhook.secretToken;
+    }
+
+    await bot.telegram.setWebhook(fullWebhookUrl, options);
     logger.info(`Webhook set to: ${fullWebhookUrl}`);
   } catch (error) {
     logger.error("Failed to set webhook", { error });
