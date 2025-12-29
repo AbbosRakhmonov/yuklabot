@@ -2,6 +2,7 @@ import express, { Express } from "express";
 import { Telegraf } from "telegraf";
 import logger from "./logger";
 import { IMyContext } from "@/interfaces/IMyContext";
+import { config } from "@/config/config";
 
 export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
   const app = express();
@@ -19,6 +20,20 @@ export const createWebhookServer = (bot: Telegraf<IMyContext>): Express => {
     process.env.WEBHOOK_PATH ||
     `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
 
+  // Add secret token verification if configured
+  const secretToken = config.webhook.secretToken || "";
+
+  if (secretToken) {
+    app.use(webhookPath, (req, res, next) => {
+      const token = req.headers["x-telegram-bot-api-secret-token"];
+      if (token !== secretToken) {
+        logger.warn("Unauthorized webhook request");
+        return res.status(401).send("Unauthorized");
+      }
+      return next();
+    });
+  }
+
   // Set webhook endpoint - webhookCallback returns an Express middleware
   app.post(webhookPath, bot.webhookCallback());
 
@@ -33,11 +48,13 @@ export const setWebhook = async (
 ): Promise<void> => {
   try {
     const webhookPath =
-      process.env.WEBHOOK_PATH ||
-      `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
+      config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
     const fullWebhookUrl = `${webhookUrl}${webhookPath}`;
 
-    await bot.telegram.setWebhook(fullWebhookUrl);
+    await bot.telegram.setWebhook(fullWebhookUrl, {
+      // Optional: Set secret token for security
+      secret_token: config.webhook.secretToken,
+    });
     logger.info(`Webhook set to: ${fullWebhookUrl}`);
   } catch (error) {
     logger.error("Failed to set webhook", { error });

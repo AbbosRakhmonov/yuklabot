@@ -13,6 +13,7 @@ export const config = {
       process.env.WEBHOOK_PATH ||
       `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`,
     port: parseInt(process.env.PORT || process.env.WEBHOOK_PORT || "3000", 10),
+    secretToken: process.env.WEBHOOK_SECRET_TOKEN || "",
   },
   ytdlp: process.env.YTDLP_PATH || "yt-dlp",
   galleryDl: process.env.GALLERY_DL_PATH || "gallery-dl",
