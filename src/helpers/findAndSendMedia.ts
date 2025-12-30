@@ -50,7 +50,6 @@ export const findAndSendMedia = async <T extends IDownload>(
     const download = await model.findOne(processedParams).lean();
 
     if (!download) {
-      logger.warning("Download not found", { findParams });
       throw new Error("Media not found.");
     }
 

@@ -1,17 +1,18 @@
 import { IMyContext } from "@/interfaces/IMyContext";
 import { callbackQuery } from "telegraf/filters";
-import { Input } from "telegraf";
 import { startContinuousAction } from "@/utils/continuousAction";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
+import { Input } from "telegraf";
 
 export const instagramStep3 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
     await ctx.answerCbQuery();
 
     const service = ctx.wizard.state.instagram.service;
+    const data = ctx.wizard.state.instagram.data;
 
     const result = await findAndSendMedia(ctx, InstagramDownload, {
       user: ctx.userMongoId,
@@ -24,8 +25,9 @@ export const instagramStep3 = async (ctx: IMyContext) => {
       const stopVideoAction = startContinuousAction(ctx, "upload_video");
       try {
         const sentMessage = await ctx.replyWithVideo(
-          Input.fromURL(service.data?.video_url ?? "")
+          Input.fromURLStream(data.video_url as string)
         );
+
         stopVideoAction();
 
         if (ctx.userMongoId) {
@@ -35,7 +37,7 @@ export const instagramStep3 = async (ctx: IMyContext) => {
             chatId: ctx.chat?.id || ctx.from?.id || 0,
             messageId: sentMessage.message_id,
             platform: EPlatform.INSTAGRAM,
-            fileName: ctx.wizard.state.instagram.data.title,
+            fileName: data?.title ?? "",
             fileSize: 0,
             mediaType: EMediaType.VIDEO,
           });

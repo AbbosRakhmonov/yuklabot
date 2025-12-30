@@ -9,12 +9,20 @@ import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
+import { InstagramService } from "@/services";
 
 export const instagramStep4 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
     await ctx.answerCbQuery();
 
-    const service = ctx.wizard.state.instagram.service;
+    // Get service from state or recreate it
+    const serviceState = ctx.wizard.state.instagram.service;
+    const service = new InstagramService(serviceState.url);
+    // Restore state data
+    service.data = serviceState.data;
+    service.galleryDlData = serviceState.galleryDlData;
+    service.galleryDlRawData = serviceState.galleryDlRawData;
+    service.folderName = serviceState.folderName;
 
     const result = await findAndSendMedia(ctx, InstagramDownload, {
       user: ctx.userMongoId,
