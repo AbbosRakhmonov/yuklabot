@@ -43,7 +43,14 @@ export const instagramStep5 = async (ctx: IMyContext) => {
         if (item.video_url) {
           const stopVideoAction = startContinuousAction(ctx, "upload_video");
           const sentVideoMessage = await ctx.replyWithVideo(
-            Input.fromURL(item.video_url)
+            Input.fromURLStream(item.video_url),
+            {
+              thumbnail: Input.fromURLStream(
+                item.image_url || item.thumbnail || ""
+              ),
+              width: item.width,
+              height: item.height,
+            }
           );
           stopVideoAction();
 

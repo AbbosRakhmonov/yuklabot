@@ -55,7 +55,10 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
         await ctx.deleteMessage(message.message_id);
         const videoStream = (await import("fs")).createReadStream(filePath);
         const sentMessage = await ctx.replyWithVideo(
-          Input.fromReadableStream(videoStream)
+          Input.fromReadableStream(videoStream),
+          {
+            thumbnail: Input.fromURLStream(service.data?.thumbnail || ""),
+          }
         );
         stopVideoAction();
         stopVideoAction = null;
