@@ -21,6 +21,9 @@ export const createWebhookServer = async (
 
   const app = express();
 
+  // Trust proxy to correctly identify client IP when behind reverse proxy/load balancer
+  app.set("trust proxy", true);
+
   // Middleware to parse JSON (if needed for other routes)
   app.use(
     express.json({
