@@ -14,7 +14,13 @@ export const connectDatabase = async (): Promise<
       throw new Error("MONGODB_URI is not defined in environment variables");
     }
 
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri, {
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+
     logger.info("✅ Connected to MongoDB");
 
     // Get MongoDB client from mongoose connection
@@ -26,7 +32,7 @@ export const connectDatabase = async (): Promise<
     // Create and return MongoDB session store
     const store = Mongo<WizardSession<WizardSessionData>>({
       client,
-      database: dbName, 
+      database: dbName,
     });
 
     logger.info("✅ MongoDB session store created");

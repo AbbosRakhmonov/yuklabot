@@ -7,29 +7,96 @@ import { startCommand } from "./commands/start.command";
 import logger from "./config/logger";
 import { loggerMiddleware } from "./middleware/logger";
 import { userActivityMiddleware } from "./middleware/userActivity";
+import { rateLimiterMiddleware } from "./middleware/rateLimiter";
 import { createWebhookServer, deleteWebhook } from "./config/webhook";
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
 import { handleTextMessage } from "./handlers/message.handler";
 import { stage } from "./scenes";
+import { cleanupService } from "./services/cleanup.service";
+import { userActivityCache } from "./utils/userActivityCache";
+import { continuousAction } from "./utils/continuousAction";
 
-// Global error handlers to prevent bot from crashing
-process.on("uncaughtException", (error: Error) => {
-  logger.error("Uncaught Exception - keeping bot alive", {
+// Store bot instance for graceful shutdown
+let botInstance: ReturnType<typeof createBot> | null = null;
+
+// Graceful shutdown function
+const gracefulShutdown = async (): Promise<void> => {
+  logger.info("Attempting graceful shutdown...");
+
+  try {
+    // Stop cleanup service
+    cleanupService.stop();
+
+    // Stop continuous actions
+    continuousAction.stopAll();
+
+    // Stop user activity cache cleanup
+    userActivityCache.stopCleanup();
+
+    // Stop bot if it exists
+    if (botInstance) {
+      if (config.webhook.enabled) {
+        await deleteWebhook(botInstance);
+      } else {
+        botInstance.stop("SIGTERM");
+      }
+    }
+
+    // Disconnect database
+    await disconnectDatabase();
+
+    logger.info("Graceful shutdown completed");
+    process.exit(0);
+  } catch (error) {
+    logger.error("Error during graceful shutdown", { error });
+    process.exit(1);
+  }
+};
+
+// Global error handlers with graceful shutdown attempt
+process.on("uncaughtException", async (error: Error) => {
+  logger.error("Uncaught Exception", {
     error: error.message,
     stack: error.stack,
   });
-  process.exit(1);
+
+  // Attempt graceful shutdown with timeout
+  const shutdownTimeout = setTimeout(() => {
+    logger.error("Graceful shutdown timeout, forcing exit");
+    process.exit(1);
+  }, 10000); // 10 seconds timeout
+
+  try {
+    await gracefulShutdown();
+    clearTimeout(shutdownTimeout);
+  } catch {
+    clearTimeout(shutdownTimeout);
+    process.exit(1);
+  }
 });
 
 process.on(
   "unhandledRejection",
-  (reason: unknown, promise: Promise<unknown>) => {
-    logger.error("Unhandled Rejection - keeping bot alive", {
+  async (reason: unknown, promise: Promise<unknown>) => {
+    logger.error("Unhandled Rejection", {
       reason,
       promise,
     });
-    process.exit(1);
+
+    // Attempt graceful shutdown with timeout
+    const shutdownTimeout = setTimeout(() => {
+      logger.error("Graceful shutdown timeout, forcing exit");
+      process.exit(1);
+    }, 10000); // 10 seconds timeout
+
+    try {
+      await gracefulShutdown();
+      clearTimeout(shutdownTimeout);
+    } catch {
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
   }
 );
 
@@ -40,6 +107,7 @@ async function main(): Promise<void> {
 
     // Create bot instance
     const bot = createBot();
+    botInstance = bot; // Store for graceful shutdown
 
     // Middleware (order matters!)
     bot.use(session({ store }));
@@ -48,6 +116,7 @@ async function main(): Promise<void> {
     bot.command("start", startCommand);
     bot.command("help", helpCommand);
 
+    bot.use(rateLimiterMiddleware);
     bot.use(userActivityMiddleware);
     bot.use(loggerMiddleware);
 
@@ -63,22 +132,17 @@ async function main(): Promise<void> {
       });
     });
 
-    // Graceful shutdown handler
+    // Graceful shutdown handler for signals
     const shutdown = async (signal: string): Promise<void> => {
       logger.info(`${signal} signal received: closing bot...`);
-
-      if (config.webhook.enabled) {
-        await deleteWebhook(bot);
-      } else {
-        bot.stop(signal);
-      }
-
-      await disconnectDatabase();
-      process.exit(0);
+      await gracefulShutdown();
     };
 
     process.once("SIGINT", () => shutdown("SIGINT"));
     process.once("SIGTERM", () => shutdown("SIGTERM"));
+
+    // Start cleanup service
+    cleanupService.start();
 
     // Start bot with webhook or polling
     if (config.webhook.enabled) {

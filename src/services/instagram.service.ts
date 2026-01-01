@@ -12,6 +12,11 @@ import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { EMediaType } from "@/enums/EMediaType";
+import { sanitizeUrl } from "@/helpers/sanitizeUrl";
+import logger from "@/config/logger";
+
+const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
 export class InstagramService {
   url: string;
@@ -21,7 +26,7 @@ export class InstagramService {
   folderName: string | null = null;
 
   constructor(url: string) {
-    this.url = url;
+    this.url = sanitizeUrl(url);
   }
 
   /**
@@ -39,26 +44,59 @@ export class InstagramService {
         return;
       }
 
-      const childProcess = spawn(config.galleryDl, args);
+      const childProcess = spawn(config.galleryDl, args, {
+        shell: false, // Explicitly disable shell
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
       let stdout: string = "";
       let stderr: string = "";
+      let timeoutCleared = false;
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        if (!timeoutCleared) {
+          childProcess.kill("SIGTERM");
+          reject(new Error("Process timeout after 5 minutes"));
+        }
+      }, PROCESS_TIMEOUT_MS);
+
+      const clearTimeoutHandle = () => {
+        if (!timeoutCleared) {
+          timeoutCleared = true;
+          clearTimeout(timeout);
+        }
+      };
 
       childProcess.stdout.on("data", (data: Buffer) => {
+        if (stdout.length + data.length > MAX_BUFFER_SIZE) {
+          clearTimeoutHandle();
+          childProcess.kill("SIGTERM");
+          reject(new Error("Output buffer exceeded maximum size"));
+          return;
+        }
         stdout += data.toString();
       });
 
       childProcess.stderr.on("data", (data: Buffer) => {
+        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
+          clearTimeoutHandle();
+          childProcess.kill("SIGTERM");
+          reject(new Error("Error buffer exceeded maximum size"));
+          return;
+        }
         stderr += data.toString();
       });
 
       childProcess.on("error", (error) => {
+        clearTimeoutHandle();
         reject(
           new Error(`Spawning gallery-dl process failed: ${error.message}`)
         );
       });
 
       childProcess.on("close", async (code) => {
+        clearTimeoutHandle();
         if (code === 0) {
           try {
             // Parse JSON
@@ -376,16 +414,48 @@ export class InstagramService {
       args.push("--cookies", normalizedPath);
     }
 
-    const childProcess = spawn(config.galleryDl, args);
+    const childProcess = spawn(config.galleryDl, args, {
+      shell: false, // Explicitly disable shell
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     return new Promise((resolve, reject) => {
       let stderr: string = "";
+      let timeoutCleared = false;
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        if (!timeoutCleared) {
+          childProcess.kill("SIGTERM");
+          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
+            // Ignore cleanup errors
+          });
+          reject(new Error("Process timeout after 5 minutes"));
+        }
+      }, PROCESS_TIMEOUT_MS);
+
+      const clearTimeoutHandle = () => {
+        if (!timeoutCleared) {
+          timeoutCleared = true;
+          clearTimeout(timeout);
+        }
+      };
 
       childProcess.stderr.on("data", (data: Buffer) => {
+        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
+          clearTimeoutHandle();
+          childProcess.kill("SIGTERM");
+          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
+            // Ignore cleanup errors
+          });
+          reject(new Error("Error buffer exceeded maximum size"));
+          return;
+        }
         stderr += data.toString();
       });
 
       childProcess.on("error", async (error) => {
+        clearTimeoutHandle();
         await this.removeFolderIfExists(downloadDir, this.folderName!);
         reject(
           new Error(`Spawning gallery-dl process failed: ${error.message}`)
@@ -393,6 +463,7 @@ export class InstagramService {
       });
 
       childProcess.on("close", async (code) => {
+        clearTimeoutHandle();
         if (code === 0) {
           resolve(this.folderName!);
         } else {
@@ -426,19 +497,46 @@ export class InstagramService {
         audioPath,
       ];
 
-      const childProcess = spawn(config.ffmpeg, args);
+      const childProcess = spawn(config.ffmpeg, args, {
+        shell: false, // Explicitly disable shell
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
       let stderr: string = "";
+      let timeoutCleared = false;
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        if (!timeoutCleared) {
+          childProcess.kill("SIGTERM");
+          reject(new Error("Process timeout after 5 minutes"));
+        }
+      }, PROCESS_TIMEOUT_MS);
+
+      const clearTimeoutHandle = () => {
+        if (!timeoutCleared) {
+          timeoutCleared = true;
+          clearTimeout(timeout);
+        }
+      };
 
       childProcess.stderr.on("data", (data: Buffer) => {
+        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
+          clearTimeoutHandle();
+          childProcess.kill("SIGTERM");
+          reject(new Error("Error buffer exceeded maximum size"));
+          return;
+        }
         stderr += data.toString();
       });
 
       childProcess.on("error", (error) => {
+        clearTimeoutHandle();
         reject(new Error(`Spawning ffmpeg process failed: ${error.message}`));
       });
 
       childProcess.on("close", (code) => {
+        clearTimeoutHandle();
         if (code === 0) {
           resolve(audioPath);
         } else {
@@ -479,7 +577,10 @@ export class InstagramService {
       await fs.access(folderPath);
       await fs.rm(folderPath, { recursive: true });
     } catch (cleanupError) {
-      console.error(`Failed to cleanup folder ${folderPath}:`, cleanupError);
+      logger.error("Failed to cleanup folder", {
+        folderPath,
+        error: cleanupError,
+      });
     }
   }
 }

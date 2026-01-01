@@ -1,11 +1,16 @@
 import { config } from "@/config/config";
 import { MAX_FILE_SIZE } from "@/constants";
+import { sanitizeUrl } from "@/helpers/sanitizeUrl";
 import { IYoutubeData, IYoutubeFormat } from "@/interfaces/IYoutubeData";
 import { YOUTUBE_GET_INFO_ARGS } from "@/scenes/youtube/constants";
 import { myDayjs } from "@/utils/myDayjs";
 import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
+import logger from "@/config/logger";
+
+const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
 export class YoutubeService {
   url: string;
@@ -14,14 +19,17 @@ export class YoutubeService {
   folderName: string | null = null;
 
   constructor(url: string) {
-    this.url = url;
+    this.url = sanitizeUrl(url);
   }
 
   getInfo(matchFilters: string[] = []): Promise<IYoutubeData> {
     return new Promise((resolve, reject) => {
       const args = [this.url, ...YOUTUBE_GET_INFO_ARGS, ...matchFilters];
 
-      const childProcess = spawn(config.ytdlp, args);
+      const childProcess = spawn(config.ytdlp, args, {
+        shell: false, // Explicitly disable shell
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
       let stdout: string = "";
       let stderr: string = "";
@@ -115,22 +123,55 @@ export class YoutubeService {
       `%(title)s.%(ext)s`,
     ];
 
-    const childProcess = spawn(config.ytdlp, args);
+    const childProcess = spawn(config.ytdlp, args, {
+      shell: false, // Explicitly disable shell
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     return new Promise((resolve, reject) => {
       let stderr: string = "";
+      let timeoutCleared = false;
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        if (!timeoutCleared) {
+          childProcess.kill("SIGTERM");
+          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
+            // Ignore cleanup errors
+          });
+          reject(new Error("Process timeout after 5 minutes"));
+        }
+      }, PROCESS_TIMEOUT_MS);
+
+      const clearTimeoutHandle = () => {
+        if (!timeoutCleared) {
+          timeoutCleared = true;
+          clearTimeout(timeout);
+        }
+      };
 
       childProcess.stderr.on("data", (data: Buffer) => {
+        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
+          clearTimeoutHandle();
+          childProcess.kill("SIGTERM");
+          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
+            // Ignore cleanup errors
+          });
+          reject(new Error("Error buffer exceeded maximum size"));
+          return;
+        }
         stderr += data.toString();
       });
 
       childProcess.on("error", async (error) => {
+        clearTimeoutHandle();
         // remove the folder
         await this.removeFolderIfExists(downloadDir, this.folderName!);
         reject(new Error(`Spawning ytdlp process failed: ${error.message}`));
       });
 
       childProcess.on("close", async (code) => {
+        clearTimeoutHandle();
         if (code === 0) {
           resolve(this.folderName!);
         } else {
@@ -174,18 +215,52 @@ export class YoutubeService {
       "-o",
       `%(title)s.%(ext)s`,
     ];
-    const childProcess = spawn(config.ytdlp, args);
+    const childProcess = spawn(config.ytdlp, args, {
+      shell: false, // Explicitly disable shell
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     return new Promise((resolve, reject) => {
       let stderr: string = "";
+      let timeoutCleared = false;
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        if (!timeoutCleared) {
+          childProcess.kill("SIGTERM");
+          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
+            // Ignore cleanup errors
+          });
+          reject(new Error("Process timeout after 5 minutes"));
+        }
+      }, PROCESS_TIMEOUT_MS);
+
+      const clearTimeoutHandle = () => {
+        if (!timeoutCleared) {
+          timeoutCleared = true;
+          clearTimeout(timeout);
+        }
+      };
+
       childProcess.stderr.on("data", (data: Buffer) => {
+        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
+          clearTimeoutHandle();
+          childProcess.kill("SIGTERM");
+          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
+            // Ignore cleanup errors
+          });
+          reject(new Error("Error buffer exceeded maximum size"));
+          return;
+        }
         stderr += data.toString();
       });
       childProcess.on("error", async (error) => {
+        clearTimeoutHandle();
         // remove the folder
         await this.removeFolderIfExists(downloadDir, this.folderName!);
         reject(new Error(`Spawning ytdlp process failed: ${error.message}`));
       });
       childProcess.on("close", async (code) => {
+        clearTimeoutHandle();
         if (code === 0) {
           resolve(this.folderName!);
         } else {
@@ -231,7 +306,10 @@ export class YoutubeService {
       await fs.rm(folderPath, { recursive: true });
     } catch (cleanupError) {
       // Log cleanup error but don't throw - we've already handled the main error
-      console.error(`Failed to cleanup folder ${folderPath}:`, cleanupError);
+      logger.error("Failed to cleanup folder", {
+        folderPath,
+        error: cleanupError,
+      });
     }
   }
 }

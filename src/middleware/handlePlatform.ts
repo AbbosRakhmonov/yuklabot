@@ -7,6 +7,7 @@ import { EPlatform } from "@/enums/EPlatform";
 import { YOUTUBE_SCENE_NAME } from "@/scenes/youtube/constants";
 import { INSTAGRAM_SCENE_NAME } from "@/scenes/instagram/constants";
 import { message } from "telegraf/filters";
+import { sanitizeUrl } from "@/helpers/sanitizeUrl";
 
 export const handlePlatform = async (ctx: IMyContext) => {
   if (!ctx.has(message("text")))
@@ -23,24 +24,34 @@ export const handlePlatform = async (ctx: IMyContext) => {
     throw new Error(MESSAGES.ERROR.INVALID_URL);
   }
 
-  logger.info("Text message received", { text, userId: ctx.from?.id });
+  // Sanitize URL before processing
+  const sanitizedUrl = sanitizeUrl(text);
+
+  logger.info("Text message received", {
+    text: sanitizedUrl,
+    userId: ctx.from?.id,
+  });
 
   // Fire-and-forget: don't await to avoid blocking other users
   ctx.react("👀").catch((error) => {
     logger.error("Error sending reaction", { error, userId: ctx.from?.id });
   });
 
-  const platform = await getPlatformByUrl(text);
+  const platform = await getPlatformByUrl(sanitizedUrl);
 
   // clear message text
   ctx.message.text = "";
 
   switch (platform) {
     case EPlatform.YOUTUBE:
-      await ctx.scene.enter(YOUTUBE_SCENE_NAME, { youtube: { url: text } });
+      await ctx.scene.enter(YOUTUBE_SCENE_NAME, {
+        youtube: { url: sanitizedUrl },
+      });
       break;
     case EPlatform.INSTAGRAM:
-      await ctx.scene.enter(INSTAGRAM_SCENE_NAME, { instagram: { url: text } });
+      await ctx.scene.enter(INSTAGRAM_SCENE_NAME, {
+        instagram: { url: sanitizedUrl },
+      });
       break;
     default:
       throw new Error(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);

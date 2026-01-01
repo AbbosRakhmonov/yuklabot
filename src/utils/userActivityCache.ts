@@ -17,6 +17,28 @@ interface UserActivityCache {
 class UserActivityCacheManager {
   private cache: Map<number, UserActivityCache> = new Map();
   private readonly THROTTLE_MS = 30000; // 30 seconds - only update lastActiveAt every 30s
+  private readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - TTL for cache entries
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // Start periodic cleanup (every 5 minutes)
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpired();
+    }, 5 * 60 * 1000); // 5 minutes
+  }
+
+  /**
+   * Clean up expired cache entries
+   */
+  private cleanupExpired(): void {
+    const now = myDayjs();
+    for (const [userId, cached] of this.cache.entries()) {
+      const age = now.diff(cached.lastUpdate, "ms");
+      if (age > this.CACHE_TTL_MS) {
+        this.cache.delete(userId);
+      }
+    }
+  }
 
   /**
    * Check if we should update lastActiveAt (throttled)
@@ -122,6 +144,16 @@ class UserActivityCacheManager {
    */
   clearAll(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Stop cleanup interval (for graceful shutdown)
+   */
+  stopCleanup(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
 }
 
