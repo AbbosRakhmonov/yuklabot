@@ -22,7 +22,28 @@ export const createWebhookServer = async (
   const app = express();
 
   // Trust proxy to correctly identify client IP when behind reverse proxy/load balancer
-  app.set("trust proxy", true);
+  // Default to 1 (trust only first proxy) - most secure for single reverse proxy
+  // Set via TRUST_PROXY env var: number (e.g., "1", "2") or "false" to disable
+  // Note: Setting to "true" is insecure and will cause express-rate-limit to error
+  const trustProxy = process.env.TRUST_PROXY;
+  if (trustProxy === "false") {
+    app.set("trust proxy", false);
+  } else if (trustProxy) {
+    // Parse as number (e.g., "1" for single proxy, "2" for two proxies, etc.)
+    const proxyCount = parseInt(trustProxy, 10);
+    if (!isNaN(proxyCount) && proxyCount >= 0) {
+      app.set("trust proxy", proxyCount);
+    } else {
+      // Invalid value, default to 1
+      logger.warn(
+        `Invalid TRUST_PROXY value "${trustProxy}", defaulting to 1. Use a number (e.g., "1") or "false".`
+      );
+      app.set("trust proxy", 1);
+    }
+  } else {
+    // Default to 1 (most common and secure for single reverse proxy)
+    app.set("trust proxy", 1);
+  }
 
   // Middleware to parse JSON (if needed for other routes)
   app.use(
