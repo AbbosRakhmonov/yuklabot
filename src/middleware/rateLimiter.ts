@@ -38,7 +38,7 @@ class RateLimiter {
       // First request, create entry
       this.cache.set(userId, {
         count: 1,
-        resetAt: myDayjs().add(1, "minute").toDate(),
+        resetAt: myDayjs().add(this.WINDOW_MS, "millisecond").toDate(),
       });
       return false;
     }
@@ -48,7 +48,7 @@ class RateLimiter {
       // Reset window
       this.cache.set(userId, {
         count: 1,
-        resetAt: myDayjs().add(1, "minute").toDate(),
+        resetAt: myDayjs().add(this.WINDOW_MS, "millisecond").toDate(),
       });
       return false;
     }

@@ -53,7 +53,9 @@ export class CleanupService {
    */
   async cleanup(): Promise<void> {
     const downloadDir = config.downloadDir;
-    const cutoffTime = myDayjs().subtract(24, "hours").toDate();
+    const cutoffTime = myDayjs()
+      .subtract(this.FOLDER_MAX_AGE_MS, "millisecond")
+      .toDate();
 
     try {
       // Check if download directory exists
@@ -150,4 +152,3 @@ export class CleanupService {
 }
 
 export const cleanupService = new CleanupService();
-
