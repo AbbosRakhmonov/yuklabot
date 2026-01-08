@@ -21,4 +21,7 @@ export const config = {
   instagramCookies: process.env.INSTAGRAM_COOKIES_PATH || undefined,
   logLevel: process.env.LOG_LEVEL || "info",
   downloadDir: process.env.DOWNLOAD_DIR || "downloads",
+  // TikTok proxy configuration (required for regions where TikTok is blocked)
+  // Format: http://proxy:port or socks5://proxy:port
+  tiktokProxy: process.env.TIKTOK_PROXY || undefined,
 };
