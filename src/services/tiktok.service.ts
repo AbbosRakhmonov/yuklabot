@@ -22,22 +22,6 @@ export class TiktokService {
   }
 
   /**
-   * Get impersonate arguments for yt-dlp
-   */
-  private getImpersonateArgs(): string[] {
-    let target = config.tiktokImpersonate;
-
-    // Force Chrome/Windows casing if the user provided lowercase
-    if (target.toLowerCase().startsWith("chrome")) {
-      // Using just "Chrome" is safest for yt-dlp 2026
-      // as it auto-selects the best available version
-      target = "Chrome";
-    }
-
-    return ["--impersonate", target];
-  }
-
-  /**
    * Get proxy arguments for yt-dlp if configured
    */
   private getProxyArgs(): string[] {
@@ -63,7 +47,8 @@ export class TiktokService {
    */
   private getCommonArgs(): string[] {
     return [
-      ...this.getImpersonateArgs(),
+      "--impersonate",
+      "Chrome",
       ...TIKTOK_BASE_ARGS,
       ...this.getProxyArgs(),
       ...this.getNoWatermarkArgs(),
