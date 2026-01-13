@@ -54,8 +54,8 @@ export class TiktokService {
    */
   private getCommonArgs(): string[] {
     return [
-      ...TIKTOK_BASE_ARGS,
       ...this.getImpersonateArgs(),
+      ...TIKTOK_BASE_ARGS,
       ...this.getProxyArgs(),
       ...this.getNoWatermarkArgs(),
     ];
