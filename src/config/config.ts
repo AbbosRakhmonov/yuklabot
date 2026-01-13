@@ -26,6 +26,8 @@ export const config = {
   tiktokProxy: process.env.TIKTOK_PROXY || undefined,
   // TikTok impersonate target for yt-dlp (e.g., "Chrome-131:Windows-10")
   // Run "yt-dlp --list-impersonate-targets" to see available options
-  // NOTE: Case-sensitive! Use exact format from the list (e.g., Chrome-99:Windows-10)
-  tiktokImpersonate: process.env.TIKTOK_IMPERSONATE || "Chrome-99:Windows-10",
+  // NOTE: Case-sensitive! Use exact format from the list (e.g., Chrome-110:Windows-10)
+  tiktokImpersonate:
+    process.env.TIKTOK_IMPERSONATE?.trim().replace(/^["']|["']$/g, "") ||
+    "Chrome-110:Windows-10",
 };
