@@ -24,4 +24,7 @@ export const config = {
   // TikTok proxy configuration (required for regions where TikTok is blocked)
   // Format: http://proxy:port or socks5://proxy:port
   tiktokProxy: process.env.TIKTOK_PROXY || undefined,
+  // TikTok impersonate target for yt-dlp (e.g., "chrome-131:windows-10")
+  // Run "yt-dlp --list-impersonate-targets" to see available options
+  tiktokImpersonate: process.env.TIKTOK_IMPERSONATE || "chrome-99:windows-10",
 };

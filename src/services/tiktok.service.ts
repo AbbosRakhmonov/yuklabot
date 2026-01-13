@@ -2,10 +2,7 @@ import { config } from "@/config/config";
 import { MAX_FILE_SIZE } from "@/constants";
 import { sanitizeUrl } from "@/helpers/sanitizeUrl";
 import { ITiktokData } from "@/interfaces/ITiktokData";
-import {
-  TIKTOK_GET_INFO_ARGS,
-  TIKTOK_DOWNLOAD_ARGS,
-} from "@/scenes/tiktok/constants";
+import { TIKTOK_BASE_ARGS } from "@/scenes/tiktok/constants";
 import { myDayjs } from "@/utils/myDayjs";
 import { spawn } from "child_process";
 import fs from "fs/promises";
@@ -22,6 +19,13 @@ export class TiktokService {
 
   constructor(url: string) {
     this.url = sanitizeUrl(url);
+  }
+
+  /**
+   * Get impersonate arguments for yt-dlp
+   */
+  private getImpersonateArgs(): string[] {
+    return ["--impersonate", config.tiktokImpersonate];
   }
 
   /**
@@ -45,14 +49,21 @@ export class TiktokService {
     ];
   }
 
+  /**
+   * Get common args for all yt-dlp calls
+   */
+  private getCommonArgs(): string[] {
+    return [
+      ...TIKTOK_BASE_ARGS,
+      ...this.getImpersonateArgs(),
+      ...this.getProxyArgs(),
+      ...this.getNoWatermarkArgs(),
+    ];
+  }
+
   getInfo(): Promise<ITiktokData> {
     return new Promise((resolve, reject) => {
-      const args = [
-        this.url,
-        ...TIKTOK_GET_INFO_ARGS,
-        ...this.getProxyArgs(),
-        ...this.getNoWatermarkArgs(),
-      ];
+      const args = [this.url, ...this.getCommonArgs(), "-j"];
 
       const childProcess = spawn(config.ytdlp, args, {
         shell: false,
@@ -125,9 +136,7 @@ export class TiktokService {
 
     const args = [
       this.url,
-      ...TIKTOK_DOWNLOAD_ARGS,
-      ...this.getProxyArgs(),
-      ...this.getNoWatermarkArgs(),
+      ...this.getCommonArgs(),
       "-f",
       "best[ext=mp4]/best", // Best quality MP4 format
       "-P",
@@ -216,9 +225,7 @@ export class TiktokService {
 
     const args = [
       this.url,
-      ...TIKTOK_DOWNLOAD_ARGS,
-      ...this.getProxyArgs(),
-      ...this.getNoWatermarkArgs(),
+      ...this.getCommonArgs(),
       "--embed-metadata",
       "-f",
       "ba/best", // Best audio format
