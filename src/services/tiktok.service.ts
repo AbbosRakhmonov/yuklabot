@@ -28,8 +28,13 @@ export class TiktokService {
     const impersonateTarget = config.tiktokImpersonate;
     logger.debug("Using TikTok impersonate target", {
       target: impersonateTarget,
+      targetLength: impersonateTarget.length,
+      targetBytes: Buffer.from(impersonateTarget).toString("hex"),
     });
-    return ["--impersonate", impersonateTarget];
+    // Ensure the target is passed exactly as configured
+    const args = ["--impersonate", impersonateTarget];
+    logger.debug("Impersonate args array", { args });
+    return args;
   }
 
   /**
