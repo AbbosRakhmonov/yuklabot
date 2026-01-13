@@ -25,16 +25,16 @@ export class TiktokService {
    * Get impersonate arguments for yt-dlp
    */
   private getImpersonateArgs(): string[] {
-    const impersonateTarget = config.tiktokImpersonate;
-    logger.debug("Using TikTok impersonate target", {
-      target: impersonateTarget,
-      targetLength: impersonateTarget.length,
-      targetBytes: Buffer.from(impersonateTarget).toString("hex"),
-    });
-    // Ensure the target is passed exactly as configured
-    const args = ["--impersonate", impersonateTarget];
-    logger.debug("Impersonate args array", { args });
-    return args;
+    let target = config.tiktokImpersonate;
+
+    // Force Chrome/Windows casing if the user provided lowercase
+    if (target.toLowerCase().startsWith("chrome")) {
+      // Using just "Chrome" is safest for yt-dlp 2026
+      // as it auto-selects the best available version
+      target = "Chrome";
+    }
+
+    return ["--impersonate", target];
   }
 
   /**
@@ -74,6 +74,12 @@ export class TiktokService {
     return new Promise((resolve, reject) => {
       const args = [this.url, ...this.getCommonArgs(), "-j"];
       logger.debug("yt-dlp getInfo args", { args: args.join(" ") });
+      logger.debug("yt-dlp spawn command", {
+        command: config.ytdlp,
+        args: args,
+        impersonateIndex: args.indexOf("--impersonate"),
+        impersonateValue: args[args.indexOf("--impersonate") + 1],
+      });
 
       const childProcess = spawn(config.ytdlp, args, {
         shell: false,
