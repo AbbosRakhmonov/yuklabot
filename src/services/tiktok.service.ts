@@ -25,7 +25,11 @@ export class TiktokService {
    * Get impersonate arguments for yt-dlp
    */
   private getImpersonateArgs(): string[] {
-    return ["--impersonate", config.tiktokImpersonate];
+    const impersonateTarget = config.tiktokImpersonate;
+    logger.debug("Using TikTok impersonate target", {
+      target: impersonateTarget,
+    });
+    return ["--impersonate", impersonateTarget];
   }
 
   /**
@@ -64,6 +68,7 @@ export class TiktokService {
   getInfo(): Promise<ITiktokData> {
     return new Promise((resolve, reject) => {
       const args = [this.url, ...this.getCommonArgs(), "-j"];
+      logger.debug("yt-dlp getInfo args", { args: args.join(" ") });
 
       const childProcess = spawn(config.ytdlp, args, {
         shell: false,
@@ -144,6 +149,8 @@ export class TiktokService {
       "-o",
       `%(title).100s.%(ext)s`, // Limit title length for filesystem compatibility
     ];
+
+    logger.debug("yt-dlp downloadVideo args", { args: args.join(" ") });
 
     const childProcess = spawn(config.ytdlp, args, {
       shell: false,
