@@ -47,8 +47,6 @@ export class TiktokService {
    */
   private getCommonArgs(): string[] {
     return [
-      "--impersonate",
-      "Chrome",
       ...TIKTOK_BASE_ARGS,
       ...this.getProxyArgs(),
       ...this.getNoWatermarkArgs(),
@@ -58,13 +56,6 @@ export class TiktokService {
   getInfo(): Promise<ITiktokData> {
     return new Promise((resolve, reject) => {
       const args = [this.url, ...this.getCommonArgs(), "-j"];
-      logger.debug("yt-dlp getInfo args", { args: args.join(" ") });
-      logger.debug("yt-dlp spawn command", {
-        command: config.ytdlp,
-        args: args,
-        impersonateIndex: args.indexOf("--impersonate"),
-        impersonateValue: args[args.indexOf("--impersonate") + 1],
-      });
 
       const childProcess = spawn(config.ytdlp, args, {
         shell: false,
@@ -145,8 +136,6 @@ export class TiktokService {
       "-o",
       `%(title).100s.%(ext)s`, // Limit title length for filesystem compatibility
     ];
-
-    logger.debug("yt-dlp downloadVideo args", { args: args.join(" ") });
 
     const childProcess = spawn(config.ytdlp, args, {
       shell: false,
