@@ -9,7 +9,7 @@ import fs from "fs/promises";
 import path from "path";
 import logger from "@/config/logger";
 
-const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const PROCESS_TIMEOUT_MS = 100 * 60 * 1000; // 100 minutes
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
 export class YoutubeService {
@@ -55,13 +55,13 @@ export class YoutubeService {
               new Error(
                 `Failed to parse ytdlp output as JSON: ${
                   error instanceof Error ? error.message : String(error)
-                }`
-              )
+                }`,
+              ),
             );
           }
         } else {
           reject(
-            new Error(`ytdlp process exited with code ${code}: ${stderr}`)
+            new Error(`ytdlp process exited with code ${code}: ${stderr}`),
           );
         }
       });
@@ -77,7 +77,7 @@ export class YoutubeService {
           f.height &&
           f.height >= 144 &&
           f.filesize &&
-          f.filesize <= MAX_FILE_SIZE
+          f.filesize <= MAX_FILE_SIZE,
       ) ?? [];
 
     const seenFormatNotes = new Set<string>();
@@ -178,7 +178,7 @@ export class YoutubeService {
           // remove the folder
           await this.removeFolderIfExists(downloadDir, this.folderName!);
           reject(
-            new Error(`ytdlp process exited with code ${code}: ${stderr}`)
+            new Error(`ytdlp process exited with code ${code}: ${stderr}`),
           );
         }
       });
@@ -267,7 +267,7 @@ export class YoutubeService {
           // remove the folder
           await this.removeFolderIfExists(downloadDir, this.folderName!);
           reject(
-            new Error(`ytdlp process exited with code ${code}: ${stderr}`)
+            new Error(`ytdlp process exited with code ${code}: ${stderr}`),
           );
         }
       });
@@ -279,7 +279,7 @@ export class YoutubeService {
    */
   private async removeFolderIfExists(
     downloadDir: string,
-    folderName: string
+    folderName: string,
   ): Promise<void> {
     const folderPath = path.join(downloadDir, folderName);
     try {

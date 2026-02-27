@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 
-const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const PROCESS_TIMEOUT_MS = 100 * 60 * 1000; // 100 minutes
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
 export interface ProcessOptions {
@@ -116,7 +116,7 @@ export async function spawnProcessJson<T>(options: ProcessOptions): Promise<T> {
 
   if (result.code !== 0) {
     throw new Error(
-      `Process exited with code ${result.code}: ${result.stderr}`
+      `Process exited with code ${result.code}: ${result.stderr}`,
     );
   }
 
@@ -126,7 +126,7 @@ export async function spawnProcessJson<T>(options: ProcessOptions): Promise<T> {
     throw new Error(
       `Failed to parse JSON output: ${
         error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }

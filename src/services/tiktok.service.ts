@@ -9,7 +9,7 @@ import fs from "fs/promises";
 import path from "path";
 import logger from "@/config/logger";
 
-const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const PROCESS_TIMEOUT_MS = 100 * 60 * 1000; // 100 minutes
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
 export class TiktokService {

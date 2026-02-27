@@ -15,7 +15,7 @@ import { EMediaType } from "@/enums/EMediaType";
 import { sanitizeUrl } from "@/helpers/sanitizeUrl";
 import logger from "@/config/logger";
 
-const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const PROCESS_TIMEOUT_MS = 100 * 60 * 1000; // 100 minutes
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
 export class InstagramService {
@@ -91,7 +91,7 @@ export class InstagramService {
       childProcess.on("error", (error) => {
         clearTimeoutHandle();
         reject(
-          new Error(`Spawning gallery-dl process failed: ${error.message}`)
+          new Error(`Spawning gallery-dl process failed: ${error.message}`),
         );
       });
 
@@ -194,7 +194,7 @@ export class InstagramService {
 
             if (!jsonData) {
               throw new Error(
-                "No valid Instagram data found in gallery-dl output"
+                "No valid Instagram data found in gallery-dl output",
               );
             }
 
@@ -208,13 +208,13 @@ export class InstagramService {
               new Error(
                 `Failed to parse gallery-dl output: ${
                   error instanceof Error ? error.message : String(error)
-                }`
-              )
+                }`,
+              ),
             );
           }
         } else {
           reject(
-            new Error(`gallery-dl process exited with code ${code}: ${stderr}`)
+            new Error(`gallery-dl process exited with code ${code}: ${stderr}`),
           );
         }
       });
@@ -225,7 +225,7 @@ export class InstagramService {
    * Parse gallery-dl JSON output to IInstagramData format
    */
   private parseInstagramData(
-    jsonData: IInstagramGalleryDlData
+    jsonData: IInstagramGalleryDlData,
   ): IInstagramData {
     const detectedType = this.detectMediaType(jsonData);
 
@@ -314,7 +314,7 @@ export class InstagramService {
    * Only for POST type - stories and reels should not have carousel_media
    */
   private parseCarouselMedia(
-    jsonData: IInstagramGalleryDlData
+    jsonData: IInstagramGalleryDlData,
   ): IInstagramMediaItem[] | undefined {
     // Don't parse carousel_media for stories
     if (jsonData.type === "story" || jsonData.subcategory === "story") {
@@ -406,7 +406,7 @@ export class InstagramService {
         await fs.access(config.instagramCookies);
       } catch {
         throw new Error(
-          `Instagram cookies file not found at: ${config.instagramCookies}. Please check INSTAGRAM_COOKIES_PATH environment variable.`
+          `Instagram cookies file not found at: ${config.instagramCookies}. Please check INSTAGRAM_COOKIES_PATH environment variable.`,
         );
       }
       // Normalize path to forward slashes for cross-platform compatibility
@@ -458,7 +458,7 @@ export class InstagramService {
         clearTimeoutHandle();
         await this.removeFolderIfExists(downloadDir, this.folderName!);
         reject(
-          new Error(`Spawning gallery-dl process failed: ${error.message}`)
+          new Error(`Spawning gallery-dl process failed: ${error.message}`),
         );
       });
 
@@ -469,7 +469,7 @@ export class InstagramService {
         } else {
           await this.removeFolderIfExists(downloadDir, this.folderName!);
           reject(
-            new Error(`gallery-dl process exited with code ${code}: ${stderr}`)
+            new Error(`gallery-dl process exited with code ${code}: ${stderr}`),
           );
         }
       });
@@ -541,7 +541,7 @@ export class InstagramService {
           resolve(audioPath);
         } else {
           reject(
-            new Error(`ffmpeg process exited with code ${code}: ${stderr}`)
+            new Error(`ffmpeg process exited with code ${code}: ${stderr}`),
           );
         }
       });
@@ -553,7 +553,7 @@ export class InstagramService {
    */
   private async removeFolderIfExists(
     downloadDir: string,
-    folderName: string
+    folderName: string,
   ): Promise<void> {
     const folderPath = path.join(downloadDir, folderName);
     try {
