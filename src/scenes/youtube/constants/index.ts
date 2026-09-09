@@ -15,6 +15,11 @@ export const YOUTUBE_GET_INFO_ARGS = [
   ...YTDLP_SAFE_ARGS,
   "--js-runtimes",
   "node",
+  // YouTube "n"/signature JS-challenge yechuvchini (EJS) GitHub'dan avtomatik
+  // yuklab, to'g'ri versiyaga yangilaydi. Busiz "403 Forbidden" / "n challenge
+  // solving failed" xatolari chiqadi. https://github.com/yt-dlp/yt-dlp/wiki/EJS
+  "--remote-components",
+  "ejs:github",
   "--no-playlist",
   // "--embed-thumbnail",
 ];

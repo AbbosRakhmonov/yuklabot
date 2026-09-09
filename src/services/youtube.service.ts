@@ -71,14 +71,17 @@ export class YoutubeService {
 
   getVideoFormats(): IYoutubeFormat[] {
     const filtered =
-      this.data?.formats?.filter(
-        (f) =>
-          f.vcodec !== "none" &&
-          f.height &&
-          f.height >= 144 &&
-          f.filesize &&
-          f.filesize <= MAX_FILE_SIZE,
-      ) ?? [];
+      this.data?.formats?.filter((f) => {
+        if (f.vcodec === "none" || !f.height || f.height < 144) {
+          return false;
+        }
+        // DASH video-only formatlarida aniq `filesize` ko'pincha bo'lmaydi,
+        // faqat `filesize_approx` keladi. Avval shuni ishlatamiz; hajmi
+        // umuman noma'lum bo'lsa ham (yuqori sifatlarda shunday bo'ladi)
+        // formatni tashlab yubormaymiz, aks holda sifat menyusi kambag'al bo'ladi.
+        const size = f.filesize ?? f.filesize_approx;
+        return size == null || size <= MAX_FILE_SIZE;
+      }) ?? [];
 
     const seenFormatNotes = new Set<string>();
     return filtered.filter((f) => {
@@ -139,7 +142,7 @@ export class YoutubeService {
           this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
             // Ignore cleanup errors
           });
-          reject(new Error("Process timeout after 5 minutes"));
+          reject(new Error("Process timeout after 100 minutes"));
         }
       }, PROCESS_TIMEOUT_MS);
 
@@ -230,7 +233,7 @@ export class YoutubeService {
           this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
             // Ignore cleanup errors
           });
-          reject(new Error("Process timeout after 5 minutes"));
+          reject(new Error("Process timeout after 100 minutes"));
         }
       }, PROCESS_TIMEOUT_MS);
 
