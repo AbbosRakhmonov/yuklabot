@@ -1,8 +1,6 @@
 import { MESSAGES } from "@/constants";
 import { callbackQuery } from "telegraf/filters";
-import fs from "fs/promises";
 import path from "path";
-import { config } from "@/config/config";
 import { Input } from "telegraf";
 import { startContinuousAction } from "@/utils/continuousAction";
 import { IMyContext } from "@/interfaces/IMyContext";
@@ -12,6 +10,12 @@ import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
 import { YoutubeService } from "@/services";
+import {
+  findMediaFile,
+  getUploadableFileSize,
+  VIDEO_EXTENSIONS,
+} from "@/utils/downloadFolder";
+import { createReadStream } from "fs";
 
 export const youtubeStep3 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
@@ -19,7 +23,7 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
 
     const data = ctx.callbackQuery.data;
 
-    await handleCancelButton(ctx, data);
+    if (await handleCancelButton(ctx, data)) return;
 
     const height = data;
 
@@ -34,7 +38,6 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
     service.folderName = serviceState.folderName;
 
     const result = await findAndSendMedia(ctx, YoutubeDownload, {
-      user: ctx.userMongoId,
       url: service.url,
       platform: EPlatform.YOUTUBE,
       height: Number(height),
@@ -48,24 +51,20 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
       try {
         const folderName = await service.downloadVideo(height);
         stopVideoAction = startContinuousAction(ctx, "upload_video");
-        // get first file in folder
-        const folderPath = path.join(config.downloadDir, folderName);
-        const files = await fs.readdir(folderPath);
-        const filePath = path.join(folderPath, files[0]);
+        const filePath = await findMediaFile(folderName, VIDEO_EXTENSIONS);
+        const fileSize = await getUploadableFileSize(filePath);
         await ctx.deleteMessage(message.message_id);
-        const videoStream = (await import("fs")).createReadStream(filePath);
+        const thumbnailUrl = service.data?.thumbnail;
         const sentMessage = await ctx.replyWithVideo(
-          Input.fromReadableStream(videoStream),
+          Input.fromReadableStream(createReadStream(filePath)),
           {
-            thumbnail: Input.fromURLStream(service.data?.thumbnail || ""),
+            thumbnail: thumbnailUrl
+              ? Input.fromURLStream(thumbnailUrl)
+              : undefined,
           }
         );
         stopVideoAction();
         stopVideoAction = null;
-
-        const fileName = path.basename(filePath);
-        const stats = await fs.stat(filePath);
-        const fileSize = stats.size;
 
         // Create YoutubeDownload record
         if (ctx.userMongoId) {
@@ -75,19 +74,17 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
             chatId: ctx.chat?.id || ctx.from?.id || 0,
             messageId: sentMessage.message_id,
             platform: EPlatform.YOUTUBE,
-            fileName: fileName,
-            fileSize: fileSize,
+            fileName: path.basename(filePath),
+            fileSize,
             mediaType: EMediaType.VIDEO,
             height: Number(height),
           });
         }
       } catch (error) {
-        if (stopVideoAction) {
-          stopVideoAction();
-        }
+        await ctx.deleteMessage(message.message_id).catch(() => {});
         throw error;
       } finally {
-        // Now cleanupFolder will work because service is a fresh instance
+        stopVideoAction?.();
         await service.cleanupFolder();
       }
     }

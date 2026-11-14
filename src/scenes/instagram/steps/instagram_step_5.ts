@@ -1,6 +1,6 @@
 import { EMediaType } from "@/enums/EMediaType";
 import { EPlatform } from "@/enums/EPlatform";
-import { findAndSendMedia } from "@/helpers";
+import { findAndSendMedia, withNetworkRetry } from "@/helpers";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { ICarouselItem } from "@/interfaces/IInstagramDownload";
 import InstagramDownload from "@/models/InstagramDownload";
@@ -14,7 +14,6 @@ export const instagramStep5 = async (ctx: IMyContext) => {
   const service = ctx.wizard.state.instagram.service;
 
   const result = await findAndSendMedia(ctx, InstagramDownload, {
-    user: ctx.userMongoId,
     url: service.url,
     platform: EPlatform.INSTAGRAM,
     mediaType: EMediaType.POST,
@@ -42,15 +41,16 @@ export const instagramStep5 = async (ctx: IMyContext) => {
         // For video: send video with video_url and photo with image_url
         if (item.video_url) {
           const stopVideoAction = startContinuousAction(ctx, "upload_video");
-          const sentVideoMessage = await ctx.replyWithVideo(
-            Input.fromURLStream(item.video_url),
-            {
-              thumbnail: Input.fromURLStream(
-                item.image_url || item.thumbnail || ""
-              ),
+          const videoUrl = item.video_url;
+          const thumbnailUrl = item.image_url || item.thumbnail;
+          const sentVideoMessage = await withNetworkRetry(() =>
+            ctx.replyWithVideo(Input.fromURLStream(videoUrl), {
+              thumbnail: thumbnailUrl
+                ? Input.fromURLStream(thumbnailUrl)
+                : undefined,
               width: item.width,
               height: item.height,
-            }
+            })
           );
           stopVideoAction();
 
@@ -63,8 +63,9 @@ export const instagramStep5 = async (ctx: IMyContext) => {
           // Send thumbnail photo if available
           if (item.image_url || item.thumbnail) {
             const stopPhotoAction = startContinuousAction(ctx, "upload_photo");
-            const sentPhotoMessage = await ctx.replyWithPhoto(
-              Input.fromURL(item.image_url || item.thumbnail || "")
+            const photoUrl = item.image_url || item.thumbnail || "";
+            const sentPhotoMessage = await withNetworkRetry(() =>
+              ctx.replyWithPhoto(Input.fromURL(photoUrl))
             );
             stopPhotoAction();
 
@@ -79,8 +80,9 @@ export const instagramStep5 = async (ctx: IMyContext) => {
         // For image: send photo with image_url only
         if (item.image_url) {
           const stopPhotoAction = startContinuousAction(ctx, "upload_photo");
-          const sentPhotoMessage = await ctx.replyWithPhoto(
-            Input.fromURL(item.image_url)
+          const imageUrl = item.image_url;
+          const sentPhotoMessage = await withNetworkRetry(() =>
+            ctx.replyWithPhoto(Input.fromURL(imageUrl))
           );
           stopPhotoAction();
 

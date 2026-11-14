@@ -1,14 +1,18 @@
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
-import fs from "fs/promises";
 import path from "path";
-import { config } from "@/config/config";
 import { Input } from "telegraf";
 import YoutubeDownload from "@/models/YoutubeDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
 import { YoutubeService } from "@/services";
+import {
+  AUDIO_EXTENSIONS,
+  findMediaFile,
+  getUploadableFileSize,
+} from "@/utils/downloadFolder";
+import { createReadStream } from "fs";
 
 export const youtubeStep4 = async (ctx: IMyContext) => {
   // Get service from state or recreate it
@@ -20,7 +24,6 @@ export const youtubeStep4 = async (ctx: IMyContext) => {
   service.folderName = serviceState.folderName;
 
   const result = await findAndSendMedia(ctx, YoutubeDownload, {
-    user: ctx.userMongoId,
     url: service.url,
     platform: EPlatform.YOUTUBE,
     mediaType: EMediaType.AUDIO,
@@ -32,17 +35,12 @@ export const youtubeStep4 = async (ctx: IMyContext) => {
 
     try {
       const folderName = await service.downloadAudio();
-      const folderPath = path.join(config.downloadDir, folderName);
-      const files = await fs.readdir(folderPath);
-      const filePath = path.join(folderPath, files[0]);
+      const filePath = await findMediaFile(folderName, AUDIO_EXTENSIONS);
+      const fileSize = await getUploadableFileSize(filePath);
       await ctx.deleteMessage(message.message_id);
-      const audioStream = (await import("fs")).createReadStream(filePath);
       const sentMessage = await ctx.replyWithAudio(
-        Input.fromReadableStream(audioStream)
+        Input.fromReadableStream(createReadStream(filePath))
       );
-      const fileName = path.basename(filePath);
-      const stats = await fs.stat(filePath);
-      const fileSize = stats.size;
 
       // Create YoutubeDownload record
       if (ctx.userMongoId) {
@@ -52,14 +50,16 @@ export const youtubeStep4 = async (ctx: IMyContext) => {
           chatId: ctx.chat?.id || ctx.from?.id || 0,
           messageId: sentMessage.message_id,
           platform: EPlatform.YOUTUBE,
-          fileName: fileName,
-          fileSize: fileSize,
+          fileName: path.basename(filePath),
+          fileSize,
           mediaType: EMediaType.AUDIO,
           height: 0,
         });
       }
+    } catch (error) {
+      await ctx.deleteMessage(message.message_id).catch(() => {});
+      throw error;
     } finally {
-      // Now cleanupFolder will work
       await service.cleanupFolder();
     }
   }

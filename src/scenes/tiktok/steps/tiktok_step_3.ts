@@ -1,8 +1,7 @@
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
-import fs from "fs/promises";
 import path from "path";
-import { config } from "@/config/config";
+import { createReadStream } from "fs";
 import { Input } from "telegraf";
 import { startContinuousAction } from "@/utils/continuousAction";
 import TiktokDownload from "@/models/TiktokDownload";
@@ -10,6 +9,12 @@ import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
 import { TiktokService } from "@/services/tiktok.service";
+import {
+  AUDIO_EXTENSIONS,
+  findMediaFile,
+  getUploadableFileSize,
+  VIDEO_EXTENSIONS,
+} from "@/utils/downloadFolder";
 
 export const tiktokStep3 = async (
   ctx: IMyContext,
@@ -28,7 +33,6 @@ export const tiktokStep3 = async (
 
   // Try to find existing media in cache
   const result = await findAndSendMedia(ctx, TiktokDownload, {
-    user: ctx.userMongoId,
     url: service.url,
     platform: EPlatform.TIKTOK,
     mediaType: mediaType,
@@ -56,14 +60,12 @@ async function downloadAndSendVideo(
     const folderName = await service.downloadVideo();
     stopVideoAction = startContinuousAction(ctx, "upload_video");
 
-    // Get first file in folder
-    const folderPath = path.join(config.downloadDir, folderName);
-    const files = await fs.readdir(folderPath);
-    const filePath = path.join(folderPath, files[0]);
+    const filePath = await findMediaFile(folderName, VIDEO_EXTENSIONS);
+    const fileSize = await getUploadableFileSize(filePath);
 
     await ctx.deleteMessage(message.message_id);
 
-    const videoStream = (await import("fs")).createReadStream(filePath);
+    const videoStream = createReadStream(filePath);
     const sentMessage = await ctx.replyWithVideo(
       Input.fromReadableStream(videoStream),
       {
@@ -80,8 +82,6 @@ async function downloadAndSendVideo(
     stopVideoAction = null;
 
     const fileName = path.basename(filePath);
-    const stats = await fs.stat(filePath);
-    const fileSize = stats.size;
 
     // Create TiktokDownload record
     if (ctx.userMongoId) {
@@ -100,6 +100,7 @@ async function downloadAndSendVideo(
     if (stopVideoAction) {
       stopVideoAction();
     }
+    await ctx.deleteMessage(message.message_id).catch(() => {});
     throw error;
   } finally {
     await service.cleanupFolder();
@@ -117,14 +118,12 @@ async function downloadAndSendAudio(
     const folderName = await service.downloadAudio();
     stopAudioAction = startContinuousAction(ctx, "upload_voice");
 
-    // Get first file in folder
-    const folderPath = path.join(config.downloadDir, folderName);
-    const files = await fs.readdir(folderPath);
-    const filePath = path.join(folderPath, files[0]);
+    const filePath = await findMediaFile(folderName, AUDIO_EXTENSIONS);
+    const fileSize = await getUploadableFileSize(filePath);
 
     await ctx.deleteMessage(message.message_id);
 
-    const audioStream = (await import("fs")).createReadStream(filePath);
+    const audioStream = createReadStream(filePath);
     const sentMessage = await ctx.replyWithAudio(
       Input.fromReadableStream(audioStream),
       {
@@ -137,8 +136,6 @@ async function downloadAndSendAudio(
     stopAudioAction = null;
 
     const fileName = path.basename(filePath);
-    const stats = await fs.stat(filePath);
-    const fileSize = stats.size;
 
     // Create TiktokDownload record
     if (ctx.userMongoId) {
@@ -157,6 +154,7 @@ async function downloadAndSendAudio(
     if (stopAudioAction) {
       stopAudioAction();
     }
+    await ctx.deleteMessage(message.message_id).catch(() => {});
     throw error;
   } finally {
     await service.cleanupFolder();

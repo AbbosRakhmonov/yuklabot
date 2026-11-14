@@ -40,15 +40,21 @@ class ContinuousActionManager {
       ctx.sendChatAction(action).catch((error: unknown) => {
         logger.error("Error sending continuous chat action", { error, chatId });
         // Stop on error
-        this.stop(chatId);
+        if (this.intervals.get(chatId) === interval) {
+          this.stop(chatId);
+        }
       });
     }, intervalMs);
 
     // Store interval
     this.intervals.set(chatId, interval);
 
-    // Return stop function
-    return () => this.stop(chatId);
+    // Stop only this action, not a newer one started later in the same chat
+    return () => {
+      if (this.intervals.get(chatId) === interval) {
+        this.stop(chatId);
+      }
+    };
   }
 
   /**

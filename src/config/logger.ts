@@ -12,31 +12,43 @@ const timestampFormat = winston.format((info) => {
   return info;
 });
 
-// Define log format
-const logFormat = winston.format.combine(
-  winston.format.colorize({ all: true }),
-  winston.format.errors({ stack: true }),
-  timestampFormat(),
-  winston.format.printf(({ timestamp, level, message, ...meta }) => {
+// Error objects serialize to "{}" with plain JSON.stringify, so expand them
+const serializeMeta = (meta: Record<string, unknown>): string =>
+  JSON.stringify(meta, (_key, value: unknown) => {
+    if (value instanceof Error) {
+      return {
+        ...(value as unknown as Record<string, unknown>),
+        name: value.name,
+        message: value.message,
+        stack: value.stack,
+      };
+    }
+    return value;
+  });
+
+const printFormat = winston.format.printf(
+  ({ timestamp, level, message, ...meta }) => {
     let msg = `${timestamp} [${level}]: ${message}`;
     if (Object.keys(meta).length > 0) {
-      msg += ` ${JSON.stringify(meta)}`;
+      msg += ` ${serializeMeta(meta)}`;
     }
     return msg;
-  })
-  // winston.format.json()
+  },
 );
 
-// Console format for development
-// const consoleFormat = winston.format.combine(
-//   winston.format.printf(({ timestamp, level, message, ...meta }) => {
-//     let msg = `${timestamp} [${level}]: ${message}`;
-//     if (Object.keys(meta).length > 0) {
-//       msg += ` ${JSON.stringify(meta)}`;
-//     }
-//     return msg;
-//   })
-// );
+const baseFormat = winston.format.combine(
+  winston.format.errors({ stack: true }),
+  timestampFormat(),
+);
+
+// Colors only for the console, files stay free of ANSI codes
+const consoleFormat = winston.format.combine(
+  baseFormat,
+  winston.format.colorize({ all: true }),
+  printFormat,
+);
+
+const fileFormat = winston.format.combine(baseFormat, printFormat);
 
 const logLevels = {
   error: 0,
@@ -46,12 +58,16 @@ const logLevels = {
   debug: 4,
 };
 
+const logLevel = config.logLevel in logLevels ? config.logLevel : "info";
+
 // Create logger instance
 const logger = winston.createLogger({
   levels: logLevels,
-  level: config.logLevel,
-  format: logFormat,
-  transports: [new winston.transports.Console()],
+  level: logLevel,
+  format: fileFormat,
+  // Process exit decisions are made in index.ts, not by the logger
+  exitOnError: false,
+  transports: [new winston.transports.Console({ format: consoleFormat })],
   exceptionHandlers: [
     new winston.transports.File({
       filename: path.join(logDir, "exceptions.log"),
@@ -70,9 +86,15 @@ const fileRotateTransport = new DailyRotateFile({
   zippedArchive: true,
   maxSize: "20m",
   maxFiles: "14d",
-  format: logFormat,
+  format: fileFormat,
 });
 
 logger.add(fileRotateTransport);
+
+if (logLevel !== config.logLevel) {
+  logger.warning(
+    `Unknown LOG_LEVEL "${config.logLevel}", falling back to "info". Allowed: ${Object.keys(logLevels).join(", ")}`,
+  );
+}
 
 export default logger;

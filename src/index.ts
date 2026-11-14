@@ -16,6 +16,9 @@ import { stage } from "./scenes";
 import { cleanupService } from "./services/cleanup.service";
 import { userActivityCache } from "./utils/userActivityCache";
 import { continuousAction } from "./utils/continuousAction";
+import { createBackgroundQueueMiddleware } from "./middleware/backgroundQueue";
+import { getUserErrorMessage } from "./utils/errors";
+import { IMyContext } from "./interfaces/IMyContext";
 
 // Store bot instance for graceful shutdown
 let botInstance: ReturnType<typeof createBot> | null = null;
@@ -76,29 +79,25 @@ process.on("uncaughtException", async (error: Error) => {
   }
 });
 
-process.on(
-  "unhandledRejection",
-  async (reason: unknown, promise: Promise<unknown>) => {
-    logger.error("Unhandled Rejection", {
-      reason,
-      promise,
-    });
+// A stray rejected promise of one user must not take the bot down for everyone
+process.on("unhandledRejection", (reason: unknown) => {
+  logger.error("Unhandled Rejection", { reason });
+});
 
-    // Attempt graceful shutdown with timeout
-    const shutdownTimeout = setTimeout(() => {
-      logger.error("Graceful shutdown timeout, forcing exit");
-      process.exit(1);
-    }, 10000); // 10 seconds timeout
+const handleBotError = async (
+  error: unknown,
+  ctx: IMyContext
+): Promise<void> => {
+  logger.error(`Error for ${ctx.updateType}`, {
+    error,
+    updateType: ctx.updateType,
+    userId: ctx.from?.id,
+  });
 
-    try {
-      await gracefulShutdown();
-      clearTimeout(shutdownTimeout);
-    } catch {
-      clearTimeout(shutdownTimeout);
-      process.exit(1);
-    }
+  if (ctx.chat) {
+    await ctx.reply(getUserErrorMessage(error)).catch(() => {});
   }
-);
+};
 
 async function main(): Promise<void> {
   try {
@@ -110,6 +109,8 @@ async function main(): Promise<void> {
     botInstance = bot; // Store for graceful shutdown
 
     // Middleware (order matters!)
+    // Run every update in the background, one at a time per user
+    bot.use(createBackgroundQueueMiddleware(handleBotError));
     bot.use(session({ store }));
 
     // Commands
@@ -125,12 +126,7 @@ async function main(): Promise<void> {
     bot.on("message", handleTextMessage);
 
     // Error handling
-    bot.catch((err, ctx) => {
-      logger.error(`Error for ${ctx.updateType}`, {
-        error: err,
-        updateType: ctx.updateType,
-      });
-    });
+    bot.catch(handleBotError);
 
     // Graceful shutdown handler for signals
     const shutdown = async (signal: string): Promise<void> => {

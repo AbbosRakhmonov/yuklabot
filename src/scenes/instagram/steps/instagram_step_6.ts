@@ -4,7 +4,7 @@ import { startContinuousAction } from "@/utils/continuousAction";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
-import { findAndSendMedia } from "@/helpers";
+import { findAndSendMedia, withNetworkRetry } from "@/helpers";
 
 export const instagramStep6 = async (ctx: IMyContext) => {
   const service = ctx.wizard.state.instagram.service;
@@ -12,7 +12,6 @@ export const instagramStep6 = async (ctx: IMyContext) => {
 
   // Check if image already exists in database
   const result = await findAndSendMedia(ctx, InstagramDownload, {
-    user: ctx.userMongoId,
     url: service.url,
     platform: EPlatform.INSTAGRAM,
     mediaType: EMediaType.IMAGE,
@@ -22,7 +21,10 @@ export const instagramStep6 = async (ctx: IMyContext) => {
   if (!result) {
     if (data.image_url) {
       const stopAction = startContinuousAction(ctx, "upload_photo");
-      const sentMessage = await ctx.replyWithPhoto(Input.fromURL(data.image_url));
+      const imageUrl = data.image_url;
+      const sentMessage = await withNetworkRetry(() =>
+        ctx.replyWithPhoto(Input.fromURL(imageUrl))
+      );
       stopAction();
 
       if (ctx.userMongoId) {

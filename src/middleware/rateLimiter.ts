@@ -2,6 +2,7 @@ import { Middleware } from "telegraf";
 import { IMyContext } from "@/interfaces/IMyContext";
 import logger from "@/config/logger";
 import { myDayjs } from "@/utils/myDayjs";
+import { MESSAGES } from "@/constants";
 
 interface RateLimitEntry {
   count: number;
@@ -136,7 +137,7 @@ export const rateLimiterMiddleware: Middleware<IMyContext> = async (
   if (rateLimiter.isRateLimited(userId)) {
     const resetTime = rateLimiter.getResetTime(userId);
     const resetIn = resetTime
-      ? Math.ceil(myDayjs().diff(resetTime, "seconds", true))
+      ? Math.max(1, Math.ceil(myDayjs(resetTime).diff(myDayjs(), "seconds", true)))
       : 60;
 
     logger.warning("Rate limit exceeded", {
@@ -144,9 +145,12 @@ export const rateLimiterMiddleware: Middleware<IMyContext> = async (
       resetIn,
     });
 
-    await ctx.reply(
-      `Rate limit exceeded. Please try again in ${resetIn} seconds.`
-    );
+    // Answer button presses too, otherwise the button keeps spinning
+    if (ctx.callbackQuery) {
+      await ctx.answerCbQuery(MESSAGES.ERROR.RATE_LIMIT(resetIn));
+    } else {
+      await ctx.reply(MESSAGES.ERROR.RATE_LIMIT(resetIn));
+    }
     return;
   }
 

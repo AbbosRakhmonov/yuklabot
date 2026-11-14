@@ -1,10 +1,17 @@
 // src/config/config.ts
+const DEFAULT_TELEGRAM_API = "https://api.telegram.org";
+const telegramApiRoot = process.env.TELEGRAM_API_URL || DEFAULT_TELEGRAM_API;
+const telegramLocalMode = process.env.TELEGRAM_LOCAL_MODE === "true";
+
 export const config = {
   botName: process.env.BOT_NAME || "YuklabBot",
   timezone: process.env.TZ || "Asia/Tashkent",
   telegram: {
-    apiRoot: process.env.TELEGRAM_API_URL || "https://api.telegram.org",
-    localMode: process.env.TELEGRAM_LOCAL_MODE === "true",
+    apiRoot: telegramApiRoot,
+    localMode: telegramLocalMode,
+    // Local Bot API server allows 2GB uploads, the cloud API only 50MB
+    isLocalBotApi:
+      telegramLocalMode || telegramApiRoot !== DEFAULT_TELEGRAM_API,
   },
   webhook: {
     enabled: process.env.WEBHOOK_ENABLED === "true",
@@ -24,4 +31,9 @@ export const config = {
   // TikTok proxy configuration (required for regions where TikTok is blocked)
   // Format: http://proxy:port or socks5://proxy:port
   tiktokProxy: process.env.TIKTOK_PROXY || undefined,
+  // Max yt-dlp/gallery-dl/ffmpeg processes running at the same time
+  maxConcurrentProcesses: Math.max(
+    1,
+    parseInt(process.env.MAX_CONCURRENT_PROCESSES || "3", 10) || 3,
+  ),
 };

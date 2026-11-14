@@ -9,10 +9,11 @@ import { INSTAGRAM_SCENE_NAME } from "@/scenes/instagram/constants";
 import { TIKTOK_SCENE_NAME } from "@/scenes/tiktok/constants";
 import { message } from "telegraf/filters";
 import { sanitizeUrl } from "@/helpers/sanitizeUrl";
+import { UserError } from "@/utils/errors";
 
 export const handlePlatform = async (ctx: IMyContext) => {
   if (!ctx.has(message("text")))
-    throw new Error(MESSAGES.ERROR.INVALID_MESSAGE);
+    throw new UserError(MESSAGES.ERROR.INVALID_MESSAGE);
 
   if (ctx.scene?.current) {
     await ctx.reply(MESSAGES.INFO.OPERATION_IN_PROGRESS);
@@ -22,7 +23,7 @@ export const handlePlatform = async (ctx: IMyContext) => {
   const text = ctx.message.text.trim();
 
   if (!isValidUrl(text)) {
-    throw new Error(MESSAGES.ERROR.INVALID_URL);
+    throw new UserError(MESSAGES.ERROR.INVALID_URL);
   }
 
   // Sanitize URL before processing
@@ -60,6 +61,6 @@ export const handlePlatform = async (ctx: IMyContext) => {
       });
       break;
     default:
-      throw new Error(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
+      throw new UserError(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
   }
 };

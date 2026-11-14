@@ -2,14 +2,17 @@ import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { Input } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
-import { config } from "@/config/config";
 import path from "path";
-import fs from "fs/promises";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia } from "@/helpers";
 import { InstagramService } from "@/services";
+import {
+  findMediaFile,
+  getUploadableFileSize,
+  VIDEO_EXTENSIONS,
+} from "@/utils/downloadFolder";
 
 export const instagramStep4 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
@@ -25,7 +28,6 @@ export const instagramStep4 = async (ctx: IMyContext) => {
     service.folderName = serviceState.folderName;
 
     const result = await findAndSendMedia(ctx, InstagramDownload, {
-      user: ctx.userMongoId,
       url: service.url,
       platform: EPlatform.INSTAGRAM,
       mediaType: EMediaType.AUDIO,
@@ -36,17 +38,14 @@ export const instagramStep4 = async (ctx: IMyContext) => {
 
       try {
         const folderName = await service.download();
-        const folderPath = path.join(config.downloadDir, folderName);
-        const files = await fs.readdir(folderPath);
-        const filePath = path.join(folderPath, files[0]);
+        const filePath = await findMediaFile(folderName, VIDEO_EXTENSIONS);
         const audioPath = await service.extractAudio(filePath);
+        const fileSize = await getUploadableFileSize(audioPath);
         await ctx.deleteMessage(message.message_id);
         const sentMessage = await ctx.replyWithAudio(
           Input.fromLocalFile(audioPath)
         );
         const fileName = path.basename(audioPath);
-        const stats = await fs.stat(audioPath);
-        const fileSize = stats.size;
 
         // Create InstagramDownload record
         if (ctx.userMongoId) {
@@ -61,6 +60,9 @@ export const instagramStep4 = async (ctx: IMyContext) => {
             mediaType: EMediaType.AUDIO,
           });
         }
+      } catch (error) {
+        await ctx.deleteMessage(message.message_id).catch(() => {});
+        throw error;
       } finally {
         await service.cleanupFolder();
       }

@@ -5,3 +5,4 @@ export { isValidUrl } from "./isValidUrl";
 export { getPlatformByUrl } from "./getPlatformByUrl";
 export { formatFileSize } from "./formatFileSize";
 export { findAndSendMedia } from "./findAndSendMedia";
+export { withNetworkRetry } from "./withNetworkRetry";

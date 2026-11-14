@@ -13,10 +13,7 @@ export const createBot = (): Telegraf<IMyContext> => {
   // Configure bot options for Local Bot API if enabled
   const botOptions: Partial<Telegraf.Options<IMyContext>> = {};
 
-  if (
-    config.telegram.localMode ||
-    config.telegram.apiRoot !== "https://api.telegram.org"
-  ) {
+  if (config.telegram.isLocalBotApi) {
     botOptions.telegram = {
       apiRoot: config.telegram.apiRoot,
     };

@@ -11,7 +11,7 @@ export const instagramStep2 = async (ctx: IMyContext) => {
     const type = ctx.callbackQuery.data;
 
     // Check if cancel button was clicked
-    await handleCancelButton(ctx, type);
+    if (await handleCancelButton(ctx, type)) return;
 
     await ctx.deleteMessage();
 

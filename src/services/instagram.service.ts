@@ -7,16 +7,18 @@ import {
   IInstagramGalleryDlData,
   IGalleryDlJsonResponse,
 } from "@/interfaces/IGalleryDlData";
-import { myDayjs } from "@/utils/myDayjs";
-import { spawn } from "child_process";
 import fs from "fs/promises";
-import path from "path";
 import { EMediaType } from "@/enums/EMediaType";
 import { sanitizeUrl } from "@/helpers/sanitizeUrl";
-import logger from "@/config/logger";
-
-const PROCESS_TIMEOUT_MS = 100 * 60 * 1000; // 100 minutes
-const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
+import {
+  createDownloadFolder,
+  getDownloadFolderPath,
+  removeDownloadFolder,
+} from "@/utils/downloadFolder";
+import {
+  spawnProcessJson,
+  spawnProcessOrThrow,
+} from "@/utils/processManager";
 
 export class InstagramService {
   url: string;
@@ -33,192 +35,112 @@ export class InstagramService {
    * Get Instagram post/reel/story information using gallery-dl
    */
   async getInfo(): Promise<IInstagramData> {
-    const args = [this.url, "--dump-json"];
-
-    return new Promise((resolve, reject) => {
-      if (config.instagramCookies) {
-        const normalizedPath = config.instagramCookies.replace(/\\/g, "/");
-        args.push("--cookies", normalizedPath);
-      } else {
-        reject(new Error("No cookies configured"));
-        return;
-      }
-
-      const childProcess = spawn(config.galleryDl, args, {
-        shell: false, // Explicitly disable shell
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      let stdout: string = "";
-      let stderr: string = "";
-      let timeoutCleared = false;
-
-      // Set timeout
-      const timeout = setTimeout(() => {
-        if (!timeoutCleared) {
-          childProcess.kill("SIGTERM");
-          reject(new Error("Process timeout after 5 minutes"));
-        }
-      }, PROCESS_TIMEOUT_MS);
-
-      const clearTimeoutHandle = () => {
-        if (!timeoutCleared) {
-          timeoutCleared = true;
-          clearTimeout(timeout);
-        }
-      };
-
-      childProcess.stdout.on("data", (data: Buffer) => {
-        if (stdout.length + data.length > MAX_BUFFER_SIZE) {
-          clearTimeoutHandle();
-          childProcess.kill("SIGTERM");
-          reject(new Error("Output buffer exceeded maximum size"));
-          return;
-        }
-        stdout += data.toString();
-      });
-
-      childProcess.stderr.on("data", (data: Buffer) => {
-        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
-          clearTimeoutHandle();
-          childProcess.kill("SIGTERM");
-          reject(new Error("Error buffer exceeded maximum size"));
-          return;
-        }
-        stderr += data.toString();
-      });
-
-      childProcess.on("error", (error) => {
-        clearTimeoutHandle();
-        reject(
-          new Error(`Spawning gallery-dl process failed: ${error.message}`),
-        );
-      });
-
-      childProcess.on("close", async (code) => {
-        clearTimeoutHandle();
-        if (code === 0) {
-          try {
-            // Parse JSON
-            const parsed = JSON.parse(stdout) as IGalleryDlJsonResponse;
-
-            // Store raw data
-            this.galleryDlRawData = parsed;
-
-            // gallery-dl returns array of arrays: [[2, {...}], [3, "url", {...}], ...]
-            // For carousel posts: [2, post_metadata] followed by multiple [3, "url", media_item]
-            // We need to collect post metadata and all carousel items
-            let postMetadata: IInstagramGalleryDlData | null = null;
-            const carouselItems: IInstagramGalleryDlData[] = [];
-
-            if (Array.isArray(parsed)) {
-              for (const item of parsed) {
-                if (Array.isArray(item) && item.length >= 3) {
-                  // Format: [status_code, url_string, data_object] - media item
-                  const dataObj = item[2];
-                  if (
-                    typeof dataObj === "object" &&
-                    dataObj !== null &&
-                    (dataObj.video_url || dataObj.display_url)
-                  ) {
-                    carouselItems.push(dataObj as IInstagramGalleryDlData);
-                  }
-                } else if (Array.isArray(item) && item.length === 2) {
-                  // Format: [status_code, data_object] - post metadata
-                  const dataObj = item[1];
-                  if (typeof dataObj === "object" && dataObj !== null) {
-                    postMetadata = dataObj as IInstagramGalleryDlData;
-                  }
-                }
-              }
-            }
-
-            // Determine the final jsonData structure
-            let jsonData: IInstagramGalleryDlData | null = null;
-
-            // Check if this is a story (stories should not have carousel_media)
-            const isStory =
-              postMetadata?.type === "story" ||
-              postMetadata?.subcategory === "story" ||
-              (carouselItems.length > 0 &&
-                (carouselItems[0].type === "story" ||
-                  carouselItems[0].subcategory === "story"));
-
-            // Check if this is a reel (reels should not have carousel_media)
-            const isReel =
-              postMetadata?.type === "reel" ||
-              postMetadata?.subcategory === "reel" ||
-              (carouselItems.length > 0 &&
-                (carouselItems[0].type === "reel" ||
-                  carouselItems[0].subcategory === "reel"));
-
-            if (isStory) {
-              // For stories: use the first item to determine video/image type
-              const storyData =
-                carouselItems.length > 0 ? carouselItems[0] : postMetadata;
-              if (storyData) {
-                jsonData = {
-                  ...storyData,
-                  // Don't add carousel_media for stories
-                };
-              }
-            } else if (isReel) {
-              // For reels: use the first item (reels don't have carousel_media)
-              const reelData =
-                carouselItems.length > 0 ? carouselItems[0] : postMetadata;
-              if (reelData) {
-                jsonData = {
-                  ...reelData,
-                  // Don't add carousel_media for reels
-                };
-              }
-            } else if (carouselItems.length > 0) {
-              // Carousel post: merge post metadata with carousel items (only for POST type)
-              if (postMetadata) {
-                // Use post metadata as base and add carousel items
-                jsonData = {
-                  ...postMetadata,
-                  carousel_media: carouselItems,
-                };
-              } else {
-                // Fallback: use first carousel item as base
-                jsonData = {
-                  ...carouselItems[0],
-                  carousel_media: carouselItems,
-                };
-              }
-            } else if (postMetadata) {
-              // Single post: use post metadata
-              jsonData = postMetadata;
-            }
-
-            if (!jsonData) {
-              throw new Error(
-                "No valid Instagram data found in gallery-dl output",
-              );
-            }
-
-            // Store structured data
-            this.galleryDlData = jsonData;
-            this.data = this.parseInstagramData(jsonData);
-
-            resolve(this.data);
-          } catch (error: unknown) {
-            reject(
-              new Error(
-                `Failed to parse gallery-dl output: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              ),
-            );
-          }
-        } else {
-          reject(
-            new Error(`gallery-dl process exited with code ${code}: ${stderr}`),
-          );
-        }
-      });
+    const parsed = await spawnProcessJson<IGalleryDlJsonResponse>({
+      command: config.galleryDl,
+      args: [this.url, "--dump-json", ...(await this.getCookiesArgs())],
     });
+
+    // Store raw data
+    this.galleryDlRawData = parsed;
+
+    // gallery-dl returns array of arrays: [[2, {...}], [3, "url", {...}], ...]
+    // For carousel posts: [2, post_metadata] followed by multiple [3, "url", media_item]
+    // We need to collect post metadata and all carousel items
+    let postMetadata: IInstagramGalleryDlData | null = null;
+    const carouselItems: IInstagramGalleryDlData[] = [];
+
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (Array.isArray(item) && item.length >= 3) {
+          // Format: [status_code, url_string, data_object] - media item
+          const dataObj = item[2];
+          if (
+            typeof dataObj === "object" &&
+            dataObj !== null &&
+            (dataObj.video_url || dataObj.display_url)
+          ) {
+            carouselItems.push(dataObj as IInstagramGalleryDlData);
+          }
+        } else if (Array.isArray(item) && item.length === 2) {
+          // Format: [status_code, data_object] - post metadata
+          const dataObj = item[1];
+          if (typeof dataObj === "object" && dataObj !== null) {
+            postMetadata = dataObj as IInstagramGalleryDlData;
+          }
+        }
+      }
+    }
+
+    // Determine the final jsonData structure
+    let jsonData: IInstagramGalleryDlData | null = null;
+
+    // Check if this is a story (stories should not have carousel_media)
+    const isStory =
+      postMetadata?.type === "story" ||
+      postMetadata?.subcategory === "story" ||
+      (carouselItems.length > 0 &&
+        (carouselItems[0].type === "story" ||
+          carouselItems[0].subcategory === "story"));
+
+    // Check if this is a reel (reels should not have carousel_media)
+    const isReel =
+      postMetadata?.type === "reel" ||
+      postMetadata?.subcategory === "reel" ||
+      (carouselItems.length > 0 &&
+        (carouselItems[0].type === "reel" ||
+          carouselItems[0].subcategory === "reel"));
+
+    if (isStory) {
+      // For stories: use the first item to determine video/image type
+      const storyData =
+        carouselItems.length > 0 ? carouselItems[0] : postMetadata;
+      if (storyData) {
+        jsonData = {
+          ...storyData,
+          // Don't add carousel_media for stories
+        };
+      }
+    } else if (isReel) {
+      // For reels: use the first item (reels don't have carousel_media)
+      const reelData =
+        carouselItems.length > 0 ? carouselItems[0] : postMetadata;
+      if (reelData) {
+        jsonData = {
+          ...reelData,
+          // Don't add carousel_media for reels
+        };
+      }
+    } else if (carouselItems.length > 0) {
+      // Carousel post: merge post metadata with carousel items (only for POST type)
+      if (postMetadata) {
+        // Use post metadata as base and add carousel items
+        jsonData = {
+          ...postMetadata,
+          carousel_media: carouselItems,
+        };
+      } else {
+        // Fallback: use first carousel item as base
+        jsonData = {
+          ...carouselItems[0],
+          carousel_media: carouselItems,
+        };
+      }
+    } else if (postMetadata) {
+      // Single post: use post metadata
+      jsonData = postMetadata;
+    }
+
+    if (!jsonData) {
+      throw new Error(
+        "No valid Instagram data found in gallery-dl output",
+      );
+    }
+
+    // Store structured data
+    this.galleryDlData = jsonData;
+    this.data = this.parseInstagramData(jsonData);
+
+    return this.data;
   }
 
   /**
@@ -369,111 +291,52 @@ export class InstagramService {
   }
 
   /**
+   * Returns gallery-dl cookies args, throws if cookies are not configured
+   */
+  private async getCookiesArgs(): Promise<string[]> {
+    if (!config.instagramCookies) {
+      throw new Error("Instagram cookies are not configured");
+    }
+
+    try {
+      await fs.access(config.instagramCookies);
+    } catch {
+      throw new Error(
+        `Instagram cookies file not found at: ${config.instagramCookies}. Please check INSTAGRAM_COOKIES_PATH environment variable.`,
+      );
+    }
+
+    // Normalize path to forward slashes for cross-platform compatibility
+    return ["--cookies", config.instagramCookies.replace(/\\/g, "/")];
+  }
+
+  /**
    * Download Instagram media using gallery-dl
    */
   async download(): Promise<string> {
-    const downloadDir = config.downloadDir;
+    const shortcode = this.data?.shortcode || this.data?.id || "instagram";
+    this.folderName = await createDownloadFolder(shortcode);
 
-    // Check if directory exists, create if not
     try {
-      await fs.access(downloadDir);
-    } catch {
-      await fs.mkdir(downloadDir, { recursive: true });
+      await spawnProcessOrThrow({
+        command: config.galleryDl,
+        args: [
+          this.url,
+          "--destination",
+          getDownloadFolderPath(this.folderName),
+          "--directory",
+          "",
+          "--no-part",
+          ...(await this.getCookiesArgs()),
+        ],
+        ignoreStdout: true,
+      });
+    } catch (error) {
+      await this.cleanupFolder();
+      throw error;
     }
 
-    const timeStamp = myDayjs().format("YYYY-MM-DD_HH-mm-ss");
-    const shortcode = this.data?.shortcode || this.data?.id || "unknown";
-    this.folderName = `${timeStamp}_${shortcode}`;
-
-    await fs.mkdir(path.join(downloadDir, this.folderName), {
-      recursive: true,
-    });
-    const downloadPath = path.join(downloadDir, this.folderName);
-
-    const args = [
-      this.url,
-      "--destination",
-      downloadPath,
-      "--directory",
-      "",
-      "--no-part",
-    ];
-
-    // Add cookies if available
-    if (config.instagramCookies) {
-      // Verify cookies file exists
-      try {
-        await fs.access(config.instagramCookies);
-      } catch {
-        throw new Error(
-          `Instagram cookies file not found at: ${config.instagramCookies}. Please check INSTAGRAM_COOKIES_PATH environment variable.`,
-        );
-      }
-      // Normalize path to forward slashes for cross-platform compatibility
-      const normalizedPath = config.instagramCookies.replace(/\\/g, "/");
-      args.push("--cookies", normalizedPath);
-    }
-
-    const childProcess = spawn(config.galleryDl, args, {
-      shell: false, // Explicitly disable shell
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    return new Promise((resolve, reject) => {
-      let stderr: string = "";
-      let timeoutCleared = false;
-
-      // Set timeout
-      const timeout = setTimeout(() => {
-        if (!timeoutCleared) {
-          childProcess.kill("SIGTERM");
-          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
-            // Ignore cleanup errors
-          });
-          reject(new Error("Process timeout after 5 minutes"));
-        }
-      }, PROCESS_TIMEOUT_MS);
-
-      const clearTimeoutHandle = () => {
-        if (!timeoutCleared) {
-          timeoutCleared = true;
-          clearTimeout(timeout);
-        }
-      };
-
-      childProcess.stderr.on("data", (data: Buffer) => {
-        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
-          clearTimeoutHandle();
-          childProcess.kill("SIGTERM");
-          this.removeFolderIfExists(downloadDir, this.folderName!).catch(() => {
-            // Ignore cleanup errors
-          });
-          reject(new Error("Error buffer exceeded maximum size"));
-          return;
-        }
-        stderr += data.toString();
-      });
-
-      childProcess.on("error", async (error) => {
-        clearTimeoutHandle();
-        await this.removeFolderIfExists(downloadDir, this.folderName!);
-        reject(
-          new Error(`Spawning gallery-dl process failed: ${error.message}`),
-        );
-      });
-
-      childProcess.on("close", async (code) => {
-        clearTimeoutHandle();
-        if (code === 0) {
-          resolve(this.folderName!);
-        } else {
-          await this.removeFolderIfExists(downloadDir, this.folderName!);
-          reject(
-            new Error(`gallery-dl process exited with code ${code}: ${stderr}`),
-          );
-        }
-      });
-    });
+    return this.folderName;
   }
 
   /**
@@ -482,8 +345,9 @@ export class InstagramService {
   async extractAudio(videoPath: string): Promise<string> {
     const audioPath = videoPath.replace(/\.[^/.]+$/, ".mp3");
 
-    return new Promise((resolve, reject) => {
-      const args = [
+    await spawnProcessOrThrow({
+      command: config.ffmpeg,
+      args: [
         "-i",
         videoPath,
         "-vn",
@@ -495,92 +359,17 @@ export class InstagramService {
         "48000", // Yuqori sample rate
         "-y",
         audioPath,
-      ];
-
-      const childProcess = spawn(config.ffmpeg, args, {
-        shell: false, // Explicitly disable shell
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      let stderr: string = "";
-      let timeoutCleared = false;
-
-      // Set timeout
-      const timeout = setTimeout(() => {
-        if (!timeoutCleared) {
-          childProcess.kill("SIGTERM");
-          reject(new Error("Process timeout after 5 minutes"));
-        }
-      }, PROCESS_TIMEOUT_MS);
-
-      const clearTimeoutHandle = () => {
-        if (!timeoutCleared) {
-          timeoutCleared = true;
-          clearTimeout(timeout);
-        }
-      };
-
-      childProcess.stderr.on("data", (data: Buffer) => {
-        if (stderr.length + data.length > MAX_BUFFER_SIZE) {
-          clearTimeoutHandle();
-          childProcess.kill("SIGTERM");
-          reject(new Error("Error buffer exceeded maximum size"));
-          return;
-        }
-        stderr += data.toString();
-      });
-
-      childProcess.on("error", (error) => {
-        clearTimeoutHandle();
-        reject(new Error(`Spawning ffmpeg process failed: ${error.message}`));
-      });
-
-      childProcess.on("close", (code) => {
-        clearTimeoutHandle();
-        if (code === 0) {
-          resolve(audioPath);
-        } else {
-          reject(
-            new Error(`ffmpeg process exited with code ${code}: ${stderr}`),
-          );
-        }
-      });
+      ],
+      ignoreStdout: true,
     });
+
+    return audioPath;
   }
 
   /**
-   * Helper method to remove folder if it exists (non-blocking)
-   */
-  private async removeFolderIfExists(
-    downloadDir: string,
-    folderName: string,
-  ): Promise<void> {
-    const folderPath = path.join(downloadDir, folderName);
-    try {
-      await fs.access(folderPath);
-      await fs.rm(folderPath, { recursive: true });
-    } catch {
-      // Folder doesn't exist or already removed, ignore
-    }
-  }
-
-  /**
-   * Safely removes a download folder if it exists
+   * Safely removes the download folder if it exists, never throws
    */
   async cleanupFolder(): Promise<void> {
-    if (!this.folderName) {
-      return;
-    }
-
-    const folderPath = path.join(config.downloadDir, this.folderName);
-    try {
-      await fs.access(folderPath);
-      await fs.rm(folderPath, { recursive: true });
-    } catch (cleanupError) {
-      logger.error("Failed to cleanup folder", {
-        folderPath,
-        error: cleanupError,
-      });
-    }
+    await removeDownloadFolder(this.folderName);
   }
 }

@@ -1,6 +1,7 @@
 import { MESSAGES } from "@/constants";
 import { EPlatform } from "../enums/EPlatform";
 import { isValidUrl } from "./isValidUrl";
+import { UserError } from "@/utils/errors";
 
 /**
  * Allowed domains for each platform (exact match or subdomain)
@@ -67,19 +68,19 @@ function matchesPlatformDomain(
 export const getPlatformByUrl = async (url: string): Promise<EPlatform> => {
   // Basic type check
   if (!url || typeof url !== "string") {
-    throw new Error(MESSAGES.ERROR.INVALID_URL);
+    throw new UserError(MESSAGES.ERROR.INVALID_URL);
   }
 
   // Validate URL format and security
   if (!isValidUrl(url)) {
-    throw new Error(MESSAGES.ERROR.INVALID_URL);
+    throw new UserError(MESSAGES.ERROR.INVALID_URL);
   }
 
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(url);
   } catch {
-    throw new Error(MESSAGES.ERROR.INVALID_URL);
+    throw new UserError(MESSAGES.ERROR.INVALID_URL);
   }
 
   const hostname = parsedUrl.hostname.toLowerCase();
@@ -91,5 +92,5 @@ export const getPlatformByUrl = async (url: string): Promise<EPlatform> => {
     }
   }
 
-  throw new Error(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
+  throw new UserError(MESSAGES.ERROR.UNSUPPORTED_PLATFORM);
 };

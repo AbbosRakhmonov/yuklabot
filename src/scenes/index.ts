@@ -2,7 +2,7 @@ import { Scenes } from "telegraf";
 import { youtubeScene } from "./youtube";
 import { instagramScene } from "./instagram";
 import { tiktokScene } from "./tiktok";
-import { MESSAGES } from "@/constants";
+import { getUserErrorMessage } from "@/utils/errors";
 import logger from "@/config/logger";
 import { stopContinuousAction } from "@/utils/continuousAction";
 import { IMyContext } from "@/interfaces/IMyContext";
@@ -20,16 +20,14 @@ stage.use(async (ctx: IMyContext, next) => {
       await next();
     }
   } catch (error) {
+    // Stop any chat action left running by the failed step
+    stopContinuousAction(ctx);
     await ctx.scene.leave();
 
-    const errorMessage =
-      error instanceof Error ? error.message : MESSAGES.ERROR.GENERIC;
     logger.error("Error in scene", {
-      error: errorMessage,
+      error,
       userId: ctx.from?.id,
     });
-    await ctx.reply(errorMessage);
-  } finally {
-    stopContinuousAction(ctx);
+    await ctx.reply(getUserErrorMessage(error));
   }
 });

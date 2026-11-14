@@ -9,12 +9,13 @@ import { instagramStep5 } from "@/scenes/instagram/steps/instagram_step_5";
 import { instagramStep6 } from "@/scenes/instagram/steps/instagram_step_6";
 import { InstagramService } from "@/services";
 import { sendAudioVideoButtons } from "@/utils/sendAudioVideoButtons";
+import { getUserErrorMessage } from "@/utils/errors";
+import logger from "@/config/logger";
 
 export const instagramStep1 = async (ctx: IMyContext) => {
   const url = ctx.wizard.state.instagram.url;
 
   const result = await findAndSendMedia(ctx, InstagramDownload, {
-    user: ctx.userMongoId,
     url,
     platform: EPlatform.INSTAGRAM,
     mediaType: [EMediaType.POST, EMediaType.IMAGE], // Array for OR operation
@@ -50,10 +51,13 @@ export const instagramStep1 = async (ctx: IMyContext) => {
       return await instagramStep5(ctx);
     }
   } catch (error) {
-    await ctx.deleteMessage(message.message_id);
-    const errorMessage =
-      error instanceof Error ? error.message : MESSAGES.ERROR.GENERIC;
-    await ctx.reply(errorMessage);
+    await ctx.deleteMessage(message.message_id).catch(() => {});
+    logger.error("Error getting Instagram info", {
+      error,
+      url,
+      userId: ctx.from?.id,
+    });
+    await ctx.reply(getUserErrorMessage(error));
     return ctx.scene.leave();
   }
 };

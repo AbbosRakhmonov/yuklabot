@@ -46,11 +46,14 @@ export const findAndSendMedia = async <T extends IDownload>(
       processedParams = params as FindParams<T>;
     }
 
-    // Find the download record
-    const download = await model.findOne(processedParams).lean();
+    // Find the newest download record (shared across all users)
+    const download = await model
+      .findOne(processedParams)
+      .sort({ createdAt: -1 })
+      .lean();
 
     if (!download) {
-      throw new Error("Media not found.");
+      return null;
     }
 
     const chatId = ctx.chat?.id;

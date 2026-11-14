@@ -4,7 +4,7 @@ import { startContinuousAction } from "@/utils/continuousAction";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
-import { findAndSendMedia } from "@/helpers";
+import { findAndSendMedia, withNetworkRetry } from "@/helpers";
 import { Input } from "telegraf";
 
 export const instagramStep3 = async (ctx: IMyContext) => {
@@ -15,7 +15,6 @@ export const instagramStep3 = async (ctx: IMyContext) => {
     const data = ctx.wizard.state.instagram.data;
 
     const result = await findAndSendMedia(ctx, InstagramDownload, {
-      user: ctx.userMongoId,
       url: service.url,
       platform: EPlatform.INSTAGRAM,
       mediaType: EMediaType.VIDEO,
@@ -24,14 +23,15 @@ export const instagramStep3 = async (ctx: IMyContext) => {
     if (!result) {
       const stopVideoAction = startContinuousAction(ctx, "upload_video");
       try {
-        const thumbnailUrl = data.thumbnail || data.image_url || "";
-        const sentMessage = await ctx.replyWithVideo(
-          Input.fromURLStream(data.video_url as string),
-          {
-            thumbnail: Input.fromURLStream(thumbnailUrl),
+        const thumbnailUrl = data.thumbnail || data.image_url;
+        const sentMessage = await withNetworkRetry(() =>
+          ctx.replyWithVideo(Input.fromURLStream(data.video_url as string), {
+            thumbnail: thumbnailUrl
+              ? Input.fromURLStream(thumbnailUrl)
+              : undefined,
             width: data.width,
             height: data.height,
-          }
+          })
         );
 
         stopVideoAction();

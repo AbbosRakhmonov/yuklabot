@@ -6,7 +6,6 @@ export const TIKTOK_BASE_ARGS = [
   "1",
   "--max-sleep-interval",
   "3",
-  "--no-check-certificates",
   "--no-playlist",
 ];
 

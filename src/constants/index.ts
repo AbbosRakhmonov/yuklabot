@@ -1,3 +1,5 @@
+import { config } from "@/config/config";
+
 export const MESSAGES = {
   ERROR: {
     USER_NOT_FOUND: "Foydalanuvchi topilmadi. Iltimos, qayta urining.",
@@ -9,6 +11,13 @@ export const MESSAGES = {
     INVALID_MESSAGE:
       "Menga havola yuborishingiz kerak. Iltimos, qayta urining.",
     NO_SESSION: "Sessiya topilmadi. Iltimos, qayta urining.",
+    FILE_TOO_LARGE:
+      "Fayl hajmi juda katta, uni Telegram orqali yuborib bo‘lmaydi.",
+    MEDIA_NOT_FOUND: "Yuklab olingan fayl topilmadi. Iltimos, qayta urining.",
+    QUEUE_FULL:
+      "Navbatda so‘rovlaringiz juda ko‘p. Iltimos, avvalgilari tugashini kuting.",
+    RATE_LIMIT: (seconds: number) =>
+      `Juda ko‘p so‘rov yubordingiz. Iltimos, ${seconds} soniyadan keyin qayta urining.`,
   },
   INFO: {
     ANALYZING: "Analiz qilinmoqda...",
@@ -26,6 +35,9 @@ export const MESSAGES = {
   },
 } as const;
 
-export const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+// Local Bot API server: 2GB, cloud Bot API (api.telegram.org): 50MB
+export const MAX_FILE_SIZE = config.telegram.isLocalBotApi
+  ? 2 * 1024 * 1024 * 1024
+  : 50 * 1024 * 1024;
 
 export const CANCEL_BUTTON_TEXT = "❌ Bekor qilish";

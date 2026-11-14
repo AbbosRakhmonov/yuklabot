@@ -14,7 +14,7 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
     await ctx.answerCbQuery();
     const type = ctx.callbackQuery.data;
 
-    await handleCancelButton(ctx, type);
+    if (await handleCancelButton(ctx, type)) return;
 
     await ctx.editMessageText(MESSAGES.INFO.ANALYZING);
 
@@ -48,10 +48,15 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
     await ctx.deleteMessage();
 
     // send with thumbnail and title and duration
-    await ctx.replyWithPhoto(service.data?.thumbnail ?? "", {
-      caption: `📺 ${service.data?.title} - ${service.data?.duration_string}\n\n${MESSAGES.INFO.VIDEO_QUALITY}`,
-      ...keyboard,
-    });
+    const caption = `📺 ${service.data?.title} - ${service.data?.duration_string}\n\n${MESSAGES.INFO.VIDEO_QUALITY}`;
+    if (service.data?.thumbnail) {
+      await ctx.replyWithPhoto(service.data.thumbnail, {
+        caption,
+        ...keyboard,
+      });
+    } else {
+      await ctx.reply(caption, keyboard);
+    }
 
     return ctx.wizard.next();
   }

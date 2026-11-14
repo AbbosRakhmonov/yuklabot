@@ -1,8 +1,6 @@
 import logger from "../config/logger";
-import {
-  startContinuousAction,
-  stopContinuousAction,
-} from "../utils/continuousAction";
+import { startContinuousAction } from "../utils/continuousAction";
+import { getUserErrorMessage, UserError } from "@/utils/errors";
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { handlePlatform } from "@/middleware/handlePlatform";
@@ -11,26 +9,24 @@ import { handlePlatform } from "@/middleware/handlePlatform";
  * Handle text messages from users
  */
 export const handleTextMessage = async (ctx: IMyContext): Promise<void> => {
-  startContinuousAction(ctx, "typing");
+  const stopTyping = startContinuousAction(ctx, "typing");
 
   try {
     const user = ctx.from;
 
     if (!user) {
-      throw new Error(MESSAGES.ERROR.USER_NOT_FOUND);
+      throw new UserError(MESSAGES.ERROR.USER_NOT_FOUND);
     }
 
     await handlePlatform(ctx);
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : MESSAGES.ERROR.GENERIC;
     logger.error("Error handling text message", {
-      error: errorMessage,
+      error,
       userId: ctx.from?.id,
     });
-    await ctx.reply(errorMessage);
+    await ctx.reply(getUserErrorMessage(error));
     return;
   } finally {
-    stopContinuousAction(ctx);
+    stopTyping();
   }
 };

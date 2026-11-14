@@ -8,7 +8,6 @@ export const YTDLP_SAFE_ARGS = [
   "1",
   "--max-sleep-interval",
   "3",
-  "--no-check-certificates", // SSL muammolarini e'tiborsiz qoldirish
 ];
 
 export const YOUTUBE_GET_INFO_ARGS = [

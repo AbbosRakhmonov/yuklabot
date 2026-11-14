@@ -11,7 +11,7 @@ export const tiktokStep2 = async (ctx: IMyContext) => {
     await ctx.answerCbQuery();
     const type = ctx.callbackQuery.data;
 
-    await handleCancelButton(ctx, type);
+    if (await handleCancelButton(ctx, type)) return;
 
     await ctx.editMessageText(MESSAGES.INFO.ANALYZING);
 

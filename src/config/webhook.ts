@@ -1,4 +1,4 @@
-import express, { Express } from "express";
+import express, { Express, Request } from "express";
 import { Telegraf } from "telegraf";
 import logger from "./logger";
 import { IMyContext } from "@/interfaces/IMyContext";
@@ -35,7 +35,7 @@ export const createWebhookServer = async (
       app.set("trust proxy", proxyCount);
     } else {
       // Invalid value, default to 1
-      logger.warn(
+      logger.warning(
         `Invalid TRUST_PROXY value "${trustProxy}", defaulting to 1. Use a number (e.g., "1") or "false".`
       );
       app.set("trust proxy", 1);
@@ -45,16 +45,23 @@ export const createWebhookServer = async (
     app.set("trust proxy", 1);
   }
 
+  // Get webhook path
+  const webhookPath =
+    config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
+
   // Middleware to parse JSON (if needed for other routes)
   app.use(
     express.json({
       limit: "1mb",
     })
   );
+  // All updates come from a few Telegram IPs, so the webhook itself must not
+  // be rate limited (it is protected by the secret token instead)
   app.use(
     rateLimit({
       windowMs: 60000, // 1 minute
       max: 100, // limit each IP to 100 requests per windowMs
+      skip: (req: Request) => req.path === webhookPath,
     })
   );
 
@@ -92,19 +99,20 @@ export const createWebhookServer = async (
       health.status = "degraded";
     }
 
-    // Check disk space (using os.freemem as approximation)
+    // Check free space on the download directory's filesystem
     try {
-      const freeMem = os.freemem();
-      const totalMem = os.totalmem();
-      const freeGB = (freeMem / (1024 * 1024 * 1024)).toFixed(2);
-      const totalGB = (totalMem / (1024 * 1024 * 1024)).toFixed(2);
-      const percentFree = ((freeMem / totalMem) * 100).toFixed(1);
+      const stats = await fs
+        .statfs(config.downloadDir)
+        .catch(() => fs.statfs("."));
+      const freeBytes = stats.bavail * stats.bsize;
+      const totalBytes = stats.blocks * stats.bsize;
+      const percentFree = ((freeBytes / totalBytes) * 100).toFixed(1);
       health.diskSpace = {
-        free: `${freeGB} GB`,
-        total: `${totalGB} GB`,
+        free: `${(freeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
+        total: `${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
         percentFree: parseFloat(percentFree),
       };
-      // Mark as degraded if memory is below 10%
+      // Mark as degraded if free disk space is below 10%
       if (parseFloat(percentFree) < 10) {
         health.status = "degraded";
       }
@@ -116,7 +124,7 @@ export const createWebhookServer = async (
     // Check memory usage
     const memUsage = process.memoryUsage();
     const totalMem = os.totalmem();
-    const usedMem = memUsage.heapUsed;
+    const usedMem = memUsage.rss;
     const percentUsed = ((usedMem / totalMem) * 100).toFixed(1);
     health.memory = {
       used: `${(usedMem / (1024 * 1024)).toFixed(2)} MB`,
@@ -143,10 +151,6 @@ export const createWebhookServer = async (
     const statusCode = health.status === "ok" ? 200 : 503;
     res.status(statusCode).json(health);
   });
-
-  // Get webhook path
-  const webhookPath =
-    config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
 
   logger.info(`Webhook path: ${webhookPath}`);
 

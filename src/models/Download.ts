@@ -42,4 +42,7 @@ export const DownloadSchema: Schema = new Schema<IDownload>(
   }
 );
 
+// Cache lookup in findAndSendMedia
+DownloadSchema.index({ url: 1, platform: 1, mediaType: 1, createdAt: -1 });
+
 export default mongoose.model<IDownload>("Download", DownloadSchema);
