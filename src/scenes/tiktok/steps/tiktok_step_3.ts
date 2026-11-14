@@ -67,9 +67,6 @@ async function downloadAndSendVideo(
     const sentMessage = await ctx.replyWithVideo(
       Input.fromReadableStream(videoStream),
       {
-        thumbnail: service.data?.thumbnail
-          ? Input.fromURLStream(service.data.thumbnail)
-          : undefined,
         caption: service.data?.title
           ? `🎵 ${service.data.title.substring(0, 200)}`
           : undefined,
