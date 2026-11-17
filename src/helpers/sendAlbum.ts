@@ -3,6 +3,7 @@ import { EMediaType } from "@/enums/EMediaType";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { ICarouselItem } from "@/interfaces/IInstagramDownload";
 import { withNetworkRetry } from "@/helpers/withNetworkRetry";
+import { destroyInput } from "@/utils/cdnInput";
 import {
   InputFile,
   InputMediaPhoto,
@@ -15,12 +16,17 @@ const MAX_GROUP_SIZE = 10;
 export interface IAlbumItem {
   type: "photo" | "video";
   // A factory: streams can only be read once, retries need a fresh one
-  // (a URL string is fetched by Telegram itself)
-  media: () => InputFile | string;
+  // (a URL string is fetched by Telegram itself); may open the stream async
+  media: () => MediaFactoryResult;
+  // Tried when `media` can't be sent on its own (e.g. Telegram couldn't
+  // fetch the URL): usually the same file streamed through the server
+  fallbackMedia?: () => MediaFactoryResult;
   itemId: string;
   width?: number;
   height?: number;
 }
+
+type MediaFactoryResult = InputFile | string | Promise<InputFile | string>;
 
 const toCarouselItem = (
   item: IAlbumItem,
@@ -36,33 +42,68 @@ const sendSingle = async (
   item: IAlbumItem,
   caption?: string,
 ): Promise<ICarouselItem> => {
-  const message = await withNetworkRetry<{ message_id: number }>(() =>
-    item.type === "video"
-      ? ctx.replyWithVideo(item.media(), {
-          caption,
-          width: item.width,
-          height: item.height,
-          supports_streaming: true,
-        })
-      : ctx.replyWithPhoto(item.media(), { caption }),
-  );
+  const send = (factory: () => MediaFactoryResult) =>
+    withNetworkRetry<{ message_id: number }>(async () => {
+      const media = await factory();
+      try {
+        return item.type === "video"
+          ? await ctx.replyWithVideo(media, {
+              caption,
+              width: item.width,
+              height: item.height,
+              supports_streaming: true,
+            })
+          : await ctx.replyWithPhoto(media, { caption });
+      } catch (error) {
+        destroyInput(media);
+        throw error;
+      }
+    });
+
+  let message: { message_id: number };
+  try {
+    message = await send(item.media);
+  } catch (error) {
+    if (!item.fallbackMedia) throw error;
+    logger.warning("Album item failed, trying its fallback media", {
+      itemId: item.itemId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    message = await send(item.fallbackMedia);
+  }
   return toCarouselItem(item, message.message_id);
 };
 
 const toInputMedia = (
   item: IAlbumItem,
+  media: InputFile | string,
   caption?: string,
 ): InputMediaPhoto | InputMediaVideo =>
   item.type === "video"
     ? {
         type: "video",
-        media: item.media(),
+        media,
         caption,
         width: item.width,
         height: item.height,
         supports_streaming: true,
       }
-    : { type: "photo", media: item.media(), caption };
+    : { type: "photo", media, caption };
+
+/**
+ * Opens every item's media; if one fails, closes the ones already opened
+ */
+const openAll = async (items: IAlbumItem[]): Promise<(InputFile | string)[]> => {
+  const results = await Promise.allSettled(items.map(async (item) => item.media()));
+  const failed = results.find(
+    (r): r is PromiseRejectedResult => r.status === "rejected",
+  );
+  if (failed) {
+    for (const r of results) if (r.status === "fulfilled") destroyInput(r.value);
+    throw failed.reason;
+  }
+  return results.map((r) => (r as PromiseFulfilledResult<InputFile | string>).value);
+};
 
 /**
  * Sends items as albums of up to 10 (caption on the first one).
@@ -86,11 +127,19 @@ export const sendAlbum = async (
     }
 
     try {
-      const messages = await withNetworkRetry(() =>
-        ctx.replyWithMediaGroup(
-          chunk.map((item, i) => toInputMedia(item, i === 0 ? chunkCaption : undefined)),
-        ),
-      );
+      const messages = await withNetworkRetry(async () => {
+        const media = await openAll(chunk);
+        try {
+          return await ctx.replyWithMediaGroup(
+            chunk.map((item, i) =>
+              toInputMedia(item, media[i], i === 0 ? chunkCaption : undefined),
+            ),
+          );
+        } catch (error) {
+          media.forEach(destroyInput);
+          throw error;
+        }
+      });
       messages.forEach((message, i) =>
         sent.push(toCarouselItem(chunk[i], message.message_id)),
       );

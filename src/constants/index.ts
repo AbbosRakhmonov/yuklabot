@@ -23,6 +23,18 @@ export const MESSAGES = {
       `🚫 Bu sifat Telegram limitidan (${limit}) katta, uni yuborib bo‘lmaydi. Boshqa sifatni tanlang.`,
     VIDEO_TOO_MANY_PARTS: (maxParts: number) =>
       `🚫 Bu sifat juda katta: ${maxParts} qismdan ham ko‘proqqa bo‘linardi. Kichikroq sifatni tanlang.`,
+    INSTAGRAM_PRIVATE:
+      "🔒 Bu post yopiq (private) akkauntga tegishli, uni yuklab bo‘lmaydi.",
+    INSTAGRAM_AGE_RESTRICTED:
+      "🔞 Bu post yosh cheklovi ostida, uni yuklab bo‘lmaydi.",
+    INSTAGRAM_NOT_FOUND:
+      "Post topilmadi: u o‘chirilgan yoki yopiq bo‘lishi mumkin.",
+    INSTAGRAM_STORY_UNSUPPORTED:
+      "Instagram story’larini yuklab olish hozircha qo‘llab-quvvatlanmaydi.",
+    INSTAGRAM_STORY_FAILED:
+      "Story’ni yuklab bo‘lmadi: u o‘chirilgan, muddati tugagan (24 soat) yoki yopiq akkauntga tegishli bo‘lishi mumkin.",
+    INSTAGRAM_UNSUPPORTED_LINK:
+      "Bu Instagram havolasi qo‘llab-quvvatlanmaydi. Post, reel yoki story havolasini yuboring.",
     QUEUE_FULL:
       "Navbatda so‘rovlaringiz juda ko‘p. Iltimos, avvalgilari tugashini kuting.",
     RATE_LIMIT: (seconds: number) =>

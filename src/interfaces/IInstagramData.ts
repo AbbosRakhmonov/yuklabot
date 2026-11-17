@@ -17,6 +17,8 @@ export interface IInstagramData {
   height?: number;
   duration?: number;
   has_audio?: boolean;
+  // A story: sent right away (photo or video), without the Video/Audio choice
+  is_story?: boolean;
 }
 
 export interface IInstagramMediaItem {

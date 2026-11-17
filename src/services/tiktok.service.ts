@@ -10,6 +10,7 @@ import {
   removeDownloadFolder,
 } from "@/utils/downloadFolder";
 import { spawnProcessOrThrow } from "@/utils/processManager";
+import { ProxyEntry, proxyArgs, withProxyRotation } from "@/utils/proxy";
 import {
   getYtdlpProgressOptions,
   ProgressCallback,
@@ -55,16 +56,6 @@ export class TiktokService {
   }
 
   /**
-   * Get proxy arguments if configured (same syntax in yt-dlp and gallery-dl)
-   */
-  private getProxyArgs(): string[] {
-    if (config.tiktokProxy) {
-      return ["--proxy", config.tiktokProxy];
-    }
-    return [];
-  }
-
-  /**
    * Get extractor arguments for downloading without watermark
    * Uses api_hostname to get watermark-free version
    */
@@ -78,12 +69,19 @@ export class TiktokService {
   /**
    * Get common args for all yt-dlp calls
    */
-  private getCommonArgs(): string[] {
-    return [
-      ...TIKTOK_BASE_ARGS,
-      ...this.getProxyArgs(),
-      ...this.getNoWatermarkArgs(),
-    ];
+  private getCommonArgs(proxy: ProxyEntry | null): string[] {
+    return [...TIKTOK_BASE_ARGS, ...proxyArgs(proxy), ...this.getNoWatermarkArgs()];
+  }
+
+  /**
+   * Empties the download folder between proxy attempts, so a half-written
+   * file of a failed attempt can't be picked up
+   */
+  private async resetFolder(): Promise<string> {
+    const folderPath = getDownloadFolderPath(this.folderName as string);
+    await fs.rm(folderPath, { recursive: true, force: true });
+    await fs.mkdir(folderPath, { recursive: true });
+    return folderPath;
   }
 
   async downloadVideo(options: ITiktokDownloadOptions = {}): Promise<string> {
@@ -125,24 +123,29 @@ export class TiktokService {
     const folderPath = getDownloadFolderPath(this.folderName);
 
     try {
-      await spawnProcessOrThrow({
-        command: config.galleryDl,
-        args: [
-          this.url,
-          ...this.getProxyArgs(),
-          "--destination",
-          folderPath,
-          "--directory",
-          "",
-          "--no-part",
-          // Short names (Windows path limit); "_01", "_02"... keep the order
-          "-f",
-          "{id}{num:?_//>02}.{extension}",
-          "--write-info-json",
-        ],
-        ignoreStdout: true,
-        signal: options.signal,
-      });
+      await withProxyRotation(
+        "TikTok photo",
+        async (proxy) =>
+          spawnProcessOrThrow({
+            command: config.galleryDl,
+            args: [
+              this.url,
+              ...proxyArgs(proxy),
+              "--destination",
+              await this.resetFolder(),
+              "--directory",
+              "",
+              "--no-part",
+              // Short names (Windows path limit); "_01", "_02"... keep the order
+              "-f",
+              "{id}{num:?_//>02}.{extension}",
+              "--write-info-json",
+            ],
+            ignoreStdout: true,
+            signal: options.signal,
+          }),
+        { signal: options.signal },
+      );
 
       const files = (await fs.readdir(folderPath)).sort();
       const byExtension = (extensions: string[]) =>
@@ -188,24 +191,31 @@ export class TiktokService {
     const progress = getYtdlpProgressOptions(onProgress);
 
     try {
-      const result = await spawnProcessOrThrow({
-        command: config.ytdlp,
-        args: [
-          this.url,
-          ...this.getCommonArgs(),
-          ...formatArgs,
-          ...progress.args,
-          // Print the info JSON to stdout and still download
-          "-j",
-          "--no-simulate",
-          "-P",
-          getDownloadFolderPath(this.folderName),
-          "-o",
-          `%(title).100B.%(ext)s`, // Limit title length for filesystem compatibility
-        ],
-        onStdoutLine: progress.onStdoutLine,
-        signal,
-      });
+      // yt-dlp extracts and downloads in one run, so the (IP-bound) video
+      // URL is always fetched through the proxy that got it
+      const { result } = await withProxyRotation(
+        "TikTok",
+        async (proxy) =>
+          spawnProcessOrThrow({
+            command: config.ytdlp,
+            args: [
+              this.url,
+              ...this.getCommonArgs(proxy),
+              ...formatArgs,
+              ...progress.args,
+              // Print the info JSON to stdout and still download
+              "-j",
+              "--no-simulate",
+              "-P",
+              await this.resetFolder(),
+              "-o",
+              `%(title).100B.%(ext)s`, // Limit title length for filesystem compatibility
+            ],
+            onStdoutLine: progress.onStdoutLine,
+            signal,
+          }),
+        { signal },
+      );
       this.data = this.parseInfo(result.stdout);
     } catch (error) {
       await this.cleanupFolder();

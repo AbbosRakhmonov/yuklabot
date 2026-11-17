@@ -7,25 +7,18 @@ import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import { findAndSendMedia, getMessageFileId } from "@/helpers";
 import { InstagramService } from "@/services";
-import {
-  findMediaFile,
-  getUploadableFileSize,
-  VIDEO_EXTENSIONS,
-  toUploadInput,
-} from "@/utils/downloadFolder";
+import { getUploadableFileSize, toUploadInput } from "@/utils/downloadFolder";
+import { UserError } from "@/utils/errors";
 
 export const instagramStep4 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
     await ctx.answerCbQuery();
 
-    // Get service from state or recreate it
+    // The session keeps only the service's fields: rebuild it
     const serviceState = ctx.wizard.state.instagram.service;
     const service = new InstagramService(serviceState.url);
-    // Restore state data
-    service.data = serviceState.data;
-    service.galleryDlData = serviceState.galleryDlData;
-    service.galleryDlRawData = serviceState.galleryDlRawData;
-    service.folderName = serviceState.folderName;
+    service.data = ctx.wizard.state.instagram.data ?? serviceState.data;
+    service.proxyId = serviceState.proxyId ?? null;
 
     const result = await findAndSendMedia(ctx, InstagramDownload, {
       url: service.url,
@@ -34,12 +27,13 @@ export const instagramStep4 = async (ctx: IMyContext) => {
     });
 
     if (!result) {
+      const videoUrl = service.data?.video_url;
+      if (!videoUrl) throw new UserError(MESSAGES.ERROR.MEDIA_NOT_FOUND);
+
       const message = await ctx.sendMessage(MESSAGES.INFO.DOWNLOADING_AUDIO);
 
       try {
-        const folderName = await service.download();
-        const filePath = await findMediaFile(folderName, VIDEO_EXTENSIONS);
-        const audioPath = await service.extractAudio(filePath);
+        const audioPath = await service.extractAudio(videoUrl);
         const fileSize = await getUploadableFileSize(audioPath);
         await ctx.deleteMessage(message.message_id);
         const sentMessage = await ctx.replyWithAudio(

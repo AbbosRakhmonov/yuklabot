@@ -21,6 +21,7 @@ import {
   ProgressCallback,
 } from "@/utils/ytdlpProgress";
 import { getPartCount } from "@/utils/videoSplit";
+import { ProxyEntry, proxyArgs, proxyPool, withProxyRotation } from "@/utils/proxy";
 
 // Info JSON from getInfo, reused by the download to skip a second extraction
 const INFO_JSON_FILE = "info.json";
@@ -55,6 +56,8 @@ export interface IYoutubeServiceState {
   url: string;
   folderName: string | null;
   data: IYoutubeData | null;
+  // Proxy the info came from (null: server IP); never the URL itself
+  proxyId?: string | null;
 }
 
 export interface IDownloadOptions {
@@ -82,6 +85,9 @@ export class YoutubeService {
   data: IYoutubeData | null = null;
   formatId: string | null = null;
   folderName: string | null = null;
+  // The format URLs in info.json only work from the IP that got them
+  // (googlevideo "ip=" parameter), so the download uses the same proxy
+  proxyId: string | null = null;
 
   constructor(url: string) {
     this.url = sanitizeUrl(url);
@@ -91,6 +97,7 @@ export class YoutubeService {
     const service = new YoutubeService(state.url);
     service.data = state.data;
     service.folderName = state.folderName;
+    service.proxyId = state.proxyId ?? null;
     return service;
   }
 
@@ -103,6 +110,7 @@ export class YoutubeService {
     return {
       url: this.url,
       folderName: this.folderName,
+      proxyId: this.proxyId,
       data: data && {
         id: data.id,
         title: data.title,
@@ -133,15 +141,21 @@ export class YoutubeService {
    * so the later download doesn't have to ask YouTube again
    */
   async getInfo(signal?: AbortSignal): Promise<IYoutubeData> {
-    const result = await spawnProcessOrThrow({
-      command: config.ytdlp,
-      args: [this.url, ...YOUTUBE_GET_INFO_ARGS, "-j"],
-      kind: "info",
-      timeout: INFO_TIMEOUT_MS,
-      signal,
-    });
+    const { result, proxy } = await withProxyRotation(
+      "YouTube info",
+      (proxy) =>
+        spawnProcessOrThrow({
+          command: config.ytdlp,
+          args: [this.url, ...YOUTUBE_GET_INFO_ARGS, ...proxyArgs(proxy), "-j"],
+          kind: "info",
+          timeout: INFO_TIMEOUT_MS,
+          signal,
+        }),
+      { signal },
+    );
 
     this.data = JSON.parse(result.stdout) as IYoutubeData;
+    this.proxyId = proxy?.id ?? null;
 
     try {
       this.folderName = await createDownloadFolder(this.data.id || "youtube");
@@ -314,12 +328,13 @@ export class YoutubeService {
     }
     const progress = getYtdlpProgressOptions(onProgress);
 
-    const run = (source: string[]) =>
+    const run = (source: string[], proxy: ProxyEntry | null) =>
       spawnProcessOrThrow({
         command: config.ytdlp,
         args: [
           ...source,
           ...YOUTUBE_GET_INFO_ARGS,
+          ...proxyArgs(proxy),
           ...formatArgs,
           ...progress.args,
           // Download DASH fragments in parallel
@@ -337,18 +352,33 @@ export class YoutubeService {
 
     try {
       const infoJsonPath = await this.getExistingInfoJsonPath();
-      try {
-        await run(
-          infoJsonPath ? ["--load-info-json", infoJsonPath] : [this.url],
-        );
-      } catch (error) {
-        // Saved format URLs may have expired, try once more from scratch
-        if (!infoJsonPath || error instanceof ProcessCancelledError) throw error;
-        logger.warning("Download from saved info failed, retrying by URL", {
-          url: this.url,
-          error: error instanceof Error ? error.message : String(error),
+      // The saved URLs need the IP that got them; if that proxy is gone
+      // (list changed, restart), they are useless
+      const infoProxy = this.proxyId ? proxyPool.getById(this.proxyId) : null;
+      let downloaded = false;
+      // undefined: nothing to exclude from the rotation below
+      let failedProxy: ProxyEntry | null | undefined;
+
+      if (infoJsonPath && infoProxy !== undefined) {
+        try {
+          await run(["--load-info-json", infoJsonPath], infoProxy);
+          downloaded = true;
+        } catch (error) {
+          if (error instanceof ProcessCancelledError) throw error;
+          failedProxy = infoProxy;
+          // Saved format URLs may have expired or the proxy died
+          logger.warning("Download from saved info failed, retrying by URL", {
+            url: this.url,
+            error: error instanceof Error ? error.message.slice(-500) : String(error),
+          });
+        }
+      }
+
+      if (!downloaded) {
+        await withProxyRotation("YouTube download", (proxy) => run([this.url], proxy), {
+          signal,
+          exclude: failedProxy,
         });
-        await run([this.url]);
       }
     } catch (error) {
       await this.cleanupFolder();

@@ -4,6 +4,7 @@ import { findAndSendMedia, IAlbumItem, sendAlbum } from "@/helpers";
 import { IMyContext } from "@/interfaces/IMyContext";
 import InstagramDownload from "@/models/InstagramDownload";
 import { Input } from "telegraf";
+import { openCdnStream } from "@/utils/cdnInput";
 import { startContinuousAction } from "@/utils/continuousAction";
 import { buildCaption } from "@/utils/caption";
 import logger from "@/config/logger";
@@ -41,7 +42,8 @@ export const instagramStep5 = async (ctx: IMyContext) => {
     if (item.media_type === EMediaType.VIDEO && videoUrl) {
       albumItems.push({
         type: "video",
-        media: () => Input.fromURLStream(videoUrl),
+        // Streamed from the CDN, nothing on disk
+        media: () => openCdnStream(videoUrl, service.proxyId, "video.mp4"),
         itemId: item.id,
         width: item.width,
         height: item.height,
@@ -49,7 +51,10 @@ export const instagramStep5 = async (ctx: IMyContext) => {
     } else if (item.media_type === EMediaType.IMAGE && imageUrl) {
       albumItems.push({
         type: "photo",
+        // By URL: Telegram fetches it itself, no traffic through us
         media: () => Input.fromURL(imageUrl),
+        // If Telegram can't fetch it: streamed through us
+        fallbackMedia: () => openCdnStream(imageUrl, service.proxyId, "photo.jpg"),
         itemId: item.id,
       });
     }

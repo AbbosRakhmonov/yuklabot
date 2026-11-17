@@ -1,5 +1,5 @@
 import { IMyContext } from "@/interfaces/IMyContext";
-import { Input } from "telegraf";
+import { sendWithCdnFallback } from "@/utils/cdnInput";
 import { startContinuousAction } from "@/utils/continuousAction";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
@@ -26,8 +26,11 @@ export const instagramStep6 = async (ctx: IMyContext) => {
     if (data.image_url) {
       const stopAction = startContinuousAction(ctx, "upload_photo");
       const imageUrl = data.image_url;
+      // By URL (Telegram fetches it); streamed through us if that fails
       const sentMessage = await withNetworkRetry(() =>
-        ctx.replyWithPhoto(Input.fromURL(imageUrl))
+        sendWithCdnFallback(imageUrl, service.proxyId, "photo.jpg", (media) =>
+          ctx.replyWithPhoto(media)
+        )
       );
       stopAction();
 
