@@ -1,13 +1,16 @@
 import { EMediaType } from "@/enums/EMediaType";
 import { EPlatform } from "@/enums/EPlatform";
-import { findAndSendMedia, withNetworkRetry } from "@/helpers";
+import { findAndSendMedia, IAlbumItem, sendAlbum } from "@/helpers";
 import { IMyContext } from "@/interfaces/IMyContext";
-import { ICarouselItem } from "@/interfaces/IInstagramDownload";
 import InstagramDownload from "@/models/InstagramDownload";
 import { Input } from "telegraf";
 import { startContinuousAction } from "@/utils/continuousAction";
+import { buildCaption } from "@/utils/caption";
 import logger from "@/config/logger";
 
+/**
+ * Carousel post: all items as one album (groups of 10)
+ */
 export const instagramStep5 = async (ctx: IMyContext) => {
   const data = ctx.wizard.state.instagram.data;
 
@@ -30,90 +33,34 @@ export const instagramStep5 = async (ctx: IMyContext) => {
     return ctx.scene.leave();
   }
 
-  // Helper function to send a single carousel item
-  const sendCarouselItem = async (
-    item: (typeof carouselMedia)[0]
-  ): Promise<ICarouselItem[]> => {
-    const items: ICarouselItem[] = [];
-
-    try {
-      if (item.media_type === EMediaType.VIDEO) {
-        // For video: send video with video_url and photo with image_url
-        if (item.video_url) {
-          const stopVideoAction = startContinuousAction(ctx, "upload_video");
-          const videoUrl = item.video_url;
-          const thumbnailUrl = item.image_url || item.thumbnail;
-          const sentVideoMessage = await withNetworkRetry(() =>
-            ctx.replyWithVideo(Input.fromURLStream(videoUrl), {
-              thumbnail: thumbnailUrl
-                ? Input.fromURLStream(thumbnailUrl)
-                : undefined,
-              width: item.width,
-              height: item.height,
-            })
-          );
-          stopVideoAction();
-
-          items.push({
-            messageId: sentVideoMessage.message_id,
-            itemId: item.id,
-            mediaType: EMediaType.VIDEO,
-          });
-
-          // Send thumbnail photo if available
-          if (item.image_url || item.thumbnail) {
-            const stopPhotoAction = startContinuousAction(ctx, "upload_photo");
-            const photoUrl = item.image_url || item.thumbnail || "";
-            const sentPhotoMessage = await withNetworkRetry(() =>
-              ctx.replyWithPhoto(Input.fromURL(photoUrl))
-            );
-            stopPhotoAction();
-
-            items.push({
-              messageId: sentPhotoMessage.message_id,
-              itemId: `${item.id}_thumbnail`,
-              mediaType: EMediaType.IMAGE,
-            });
-          }
-        }
-      } else if (item.media_type === EMediaType.IMAGE) {
-        // For image: send photo with image_url only
-        if (item.image_url) {
-          const stopPhotoAction = startContinuousAction(ctx, "upload_photo");
-          const imageUrl = item.image_url;
-          const sentPhotoMessage = await withNetworkRetry(() =>
-            ctx.replyWithPhoto(Input.fromURL(imageUrl))
-          );
-          stopPhotoAction();
-
-          items.push({
-            messageId: sentPhotoMessage.message_id,
-            itemId: item.id,
-            mediaType: EMediaType.IMAGE,
-          });
-        }
-      }
-    } catch (error) {
-      logger.error("Error sending carousel item", {
-        error,
-        itemId: item.id,
-        mediaType: item.media_type,
-        userId: ctx.from?.id,
-      });
-      // Return empty array on error, don't throw to allow other items to process
-    }
-
-    return items;
-  };
-
-  // Process items sequentially to ensure messages are sent in order
-  // Sequential processing guarantees messages arrive in Telegram in the correct order
-  const carouselItems: ICarouselItem[] = [];
-
+  const albumItems: IAlbumItem[] = [];
   for (const item of carouselMedia) {
-    const items = await sendCarouselItem(item);
-    carouselItems.push(...items);
+    const videoUrl = item.video_url;
+    const imageUrl = item.image_url;
+
+    if (item.media_type === EMediaType.VIDEO && videoUrl) {
+      albumItems.push({
+        type: "video",
+        media: () => Input.fromURLStream(videoUrl),
+        itemId: item.id,
+        width: item.width,
+        height: item.height,
+      });
+    } else if (item.media_type === EMediaType.IMAGE && imageUrl) {
+      albumItems.push({
+        type: "photo",
+        media: () => Input.fromURL(imageUrl),
+        itemId: item.id,
+      });
+    }
   }
+
+  const stopAction = startContinuousAction(ctx, "upload_photo");
+  const carouselItems = await sendAlbum(
+    ctx,
+    albumItems,
+    buildCaption(ctx, null)
+  ).finally(stopAction);
 
   // Save all carousel items to database
   if (carouselItems.length > 0) {

@@ -1,5 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
+import { pathToFileURL } from "url";
+import { Input } from "telegraf";
+import { InputFile } from "telegraf/typings/core/types/typegram";
 import { config } from "@/config/config";
 import { MAX_FILE_SIZE, MESSAGES } from "@/constants";
 import logger from "@/config/logger";
@@ -80,6 +83,17 @@ export const findMediaFile = async (
 
   return bestPath;
 };
+
+/**
+ * A downloaded file as Telegram input.
+ * Local Bot API (--local, same machine): just the file:// path, the server
+ * reads the file from disk itself instead of us re-uploading it over HTTP.
+ * The file must stay on disk until the send request returns.
+ */
+export const toUploadInput = (filePath: string): InputFile | string =>
+  config.telegram.localMode
+    ? pathToFileURL(path.resolve(filePath)).href
+    : Input.fromLocalFile(filePath);
 
 /**
  * Returns file size, throws a user-facing error if Telegram can't accept it

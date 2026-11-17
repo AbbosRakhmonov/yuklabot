@@ -1,6 +1,6 @@
 import { IBaseState } from "@/interfaces/IBaseState";
-import { YoutubeService } from "@/services";
+import { IYoutubeServiceState } from "@/services/youtube.service";
 
 export interface IYouTubeState extends IBaseState {
-  service: YoutubeService;
+  service: IYoutubeServiceState;
 }

@@ -4,7 +4,11 @@ import { startContinuousAction } from "@/utils/continuousAction";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
-import { findAndSendMedia, withNetworkRetry } from "@/helpers";
+import {
+  findAndSendMedia,
+  getMessageFileId,
+  withNetworkRetry,
+} from "@/helpers";
 import { Input } from "telegraf";
 
 export const instagramStep3 = async (ctx: IMyContext) => {
@@ -42,6 +46,7 @@ export const instagramStep3 = async (ctx: IMyContext) => {
             url: service.url,
             chatId: ctx.chat?.id || ctx.from?.id || 0,
             messageId: sentMessage.message_id,
+            fileId: getMessageFileId(sentMessage),
             platform: EPlatform.INSTAGRAM,
             fileName: data?.title ?? "",
             fileSize: 0,

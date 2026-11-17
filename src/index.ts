@@ -1,4 +1,5 @@
 import "./config/env";
+import "./config/patches";
 
 import { session } from "telegraf";
 import { connectDatabase, disconnectDatabase } from "./config/database";
@@ -12,12 +13,19 @@ import { createWebhookServer, deleteWebhook } from "./config/webhook";
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
 import { handleTextMessage } from "./handlers/message.handler";
+import { handleTiktokAudioButton } from "./handlers/tiktokAudio.handler";
+import { TIKTOK_AUDIO_CALLBACK_REGEX } from "./scenes/tiktok/constants";
+import {
+  CANCEL_DOWNLOAD_REGEX,
+  handleCancelDownload,
+} from "./utils/downloadCancel";
 import { stage } from "./scenes";
 import { cleanupService } from "./services/cleanup.service";
 import { userActivityCache } from "./utils/userActivityCache";
 import { continuousAction } from "./utils/continuousAction";
 import { createBackgroundQueueMiddleware } from "./middleware/backgroundQueue";
 import { getUserErrorMessage } from "./utils/errors";
+import { killAllProcesses } from "./utils/processManager";
 import { IMyContext } from "./interfaces/IMyContext";
 
 // Store bot instance for graceful shutdown
@@ -28,6 +36,9 @@ const gracefulShutdown = async (): Promise<void> => {
   logger.info("Attempting graceful shutdown...");
 
   try {
+    // Stop running downloads, they'd outlive the bot otherwise
+    killAllProcesses();
+
     // Stop cleanup service
     cleanupService.stop();
 
@@ -109,6 +120,10 @@ async function main(): Promise<void> {
     botInstance = bot; // Store for graceful shutdown
 
     // Middleware (order matters!)
+    // ❌ under a progress message: must run before the per-user queue,
+    // which is busy with the very download it stops
+    bot.action(CANCEL_DOWNLOAD_REGEX, handleCancelDownload);
+
     // Run every update in the background, one at a time per user
     bot.use(createBackgroundQueueMiddleware(handleBotError));
     bot.use(session({ store }));
@@ -120,6 +135,9 @@ async function main(): Promise<void> {
     bot.use(rateLimiterMiddleware);
     bot.use(userActivityMiddleware);
     bot.use(loggerMiddleware);
+
+    // Before the stage, so the button also works while another scene is active
+    bot.action(TIKTOK_AUDIO_CALLBACK_REGEX, handleTiktokAudioButton);
 
     bot.use(stage.middleware());
 

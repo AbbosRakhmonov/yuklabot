@@ -5,6 +5,7 @@ export interface IYoutubeData {
   duration_string: string; // "1:38"
   thumbnail: string;
   channel: string;
+  uploader?: string;
   view_count: number;
   media_type?: string; // "video" (not always present)
   formats: IYoutubeFormat[];
@@ -23,4 +24,5 @@ export interface IYoutubeFormat {
   abr?: number; // audio bitrate
   vbr?: number; // video bitrate
   format_note?: string; // "1080p", "medium", "low"
+  fps?: number;
 }

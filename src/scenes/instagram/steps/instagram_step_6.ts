@@ -4,7 +4,11 @@ import { startContinuousAction } from "@/utils/continuousAction";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
-import { findAndSendMedia, withNetworkRetry } from "@/helpers";
+import {
+  findAndSendMedia,
+  getMessageFileId,
+  withNetworkRetry,
+} from "@/helpers";
 
 export const instagramStep6 = async (ctx: IMyContext) => {
   const service = ctx.wizard.state.instagram.service;
@@ -33,6 +37,7 @@ export const instagramStep6 = async (ctx: IMyContext) => {
           url: service.url,
           chatId: ctx.chat?.id || ctx.from?.id || 0,
           messageId: sentMessage.message_id,
+          fileId: getMessageFileId(sentMessage),
           platform: EPlatform.INSTAGRAM,
           fileName: data.title || data.shortcode || "instagram_image",
           fileSize: 0,

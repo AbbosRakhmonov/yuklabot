@@ -153,8 +153,8 @@ export class InstagramService {
 
     // For stories, detect if it's video or image based on content
     let mediaType = detectedType;
-    let videoUrl: string | undefined = undefined;
-    let imageUrl: string | undefined = undefined;
+    let videoUrl: string | undefined;
+    let imageUrl: string | undefined;
     let carouselMedia: IInstagramMediaItem[] | undefined = undefined;
 
     if (detectedType === EMediaType.STORY) {
@@ -340,26 +340,15 @@ export class InstagramService {
   }
 
   /**
-   * Extract audio from video using ffmpeg
+   * Extract the audio track from the video without re-encoding
+   * (Instagram uses AAC, which goes into .m4a as is)
    */
   async extractAudio(videoPath: string): Promise<string> {
-    const audioPath = videoPath.replace(/\.[^/.]+$/, ".mp3");
+    const audioPath = videoPath.replace(/\.[^/.]+$/, ".m4a");
 
     await spawnProcessOrThrow({
       command: config.ffmpeg,
-      args: [
-        "-i",
-        videoPath,
-        "-vn",
-        "-c:a",
-        "libmp3lame",
-        "-q:a",
-        "0", // VBR eng yuqori sifat
-        "-ar",
-        "48000", // Yuqori sample rate
-        "-y",
-        audioPath,
-      ],
+      args: ["-i", videoPath, "-vn", "-c:a", "copy", "-y", audioPath],
       ignoreStdout: true,
     });
 

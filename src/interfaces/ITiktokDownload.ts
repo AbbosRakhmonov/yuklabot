@@ -1,4 +1,6 @@
 import { IDownload } from "@/interfaces/IDownload";
+import { ICarouselItem } from "@/interfaces/IInstagramDownload";
 
-// TikTok downloads always get best quality, no additional fields needed
-export type ITiktokDownload = IDownload;
+export interface ITiktokDownload extends IDownload {
+  carousel?: ICarouselItem[]; // Photo posts: images + music messages
+}

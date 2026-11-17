@@ -1,17 +1,17 @@
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
-import { Input } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
 import path from "path";
 import InstagramDownload from "@/models/InstagramDownload";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
-import { findAndSendMedia } from "@/helpers";
+import { findAndSendMedia, getMessageFileId } from "@/helpers";
 import { InstagramService } from "@/services";
 import {
   findMediaFile,
   getUploadableFileSize,
   VIDEO_EXTENSIONS,
+  toUploadInput,
 } from "@/utils/downloadFolder";
 
 export const instagramStep4 = async (ctx: IMyContext) => {
@@ -43,7 +43,7 @@ export const instagramStep4 = async (ctx: IMyContext) => {
         const fileSize = await getUploadableFileSize(audioPath);
         await ctx.deleteMessage(message.message_id);
         const sentMessage = await ctx.replyWithAudio(
-          Input.fromLocalFile(audioPath)
+          toUploadInput(audioPath)
         );
         const fileName = path.basename(audioPath);
 
@@ -54,6 +54,7 @@ export const instagramStep4 = async (ctx: IMyContext) => {
             url: service.url,
             chatId: ctx.chat?.id || ctx.from?.id || 0,
             messageId: sentMessage.message_id,
+            fileId: getMessageFileId(sentMessage),
             platform: EPlatform.INSTAGRAM,
             fileName: fileName,
             fileSize: fileSize,

@@ -7,6 +7,7 @@ export interface IDownload extends Document {
   url: string;
   chatId: number;
   messageId: number;
+  fileId?: string;
   platform: EPlatform;
   fileName: string;
   fileSize: number;

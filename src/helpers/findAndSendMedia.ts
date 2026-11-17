@@ -1,16 +1,47 @@
-import mongoose, { Model } from "mongoose";
+import mongoose, { Model, QueryFilter } from "mongoose";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { IDownload } from "@/interfaces/IDownload";
 import logger from "@/config/logger";
 import { get, has } from "lodash";
 import { ICarouselItem } from "@/interfaces/IInstagramDownload";
 import Forward from "@/models/Forward";
+import { InlineKeyboardMarkup, ReplyParameters } from "telegraf/types";
+import { EMediaType } from "@/enums/EMediaType";
+import { buildCaption } from "@/utils/caption";
+
+interface ISendExtra {
+  caption?: string;
+  reply_markup?: InlineKeyboardMarkup;
+  reply_parameters?: ReplyParameters;
+}
+
+/**
+ * Sends cached media by its Telegram file_id (no upload, no local file)
+ */
+const sendByFileId = (
+  ctx: IMyContext,
+  download: { fileId?: string; mediaType: EMediaType },
+  extra: ISendExtra
+): Promise<{ message_id: number }> => {
+  const fileId = download.fileId as string;
+  switch (download.mediaType) {
+    case EMediaType.VIDEO:
+    case EMediaType.REEL:
+      return ctx.replyWithVideo(fileId, { ...extra, supports_streaming: true });
+    case EMediaType.AUDIO:
+      return ctx.replyWithAudio(fileId, extra);
+    case EMediaType.IMAGE:
+      return ctx.replyWithPhoto(fileId, extra);
+    default:
+      return ctx.replyWithDocument(fileId, extra);
+  }
+};
 
 /**
  * Type helper to extract queryable fields from a model type
  * Uses the same type that Mongoose's findOne expects
  */
-type FindParams<T extends IDownload> = Parameters<Model<T>["findOne"]>[0];
+type FindParams<T extends IDownload> = QueryFilter<T>;
 
 /**
  * Find media through given properties and send message to user
@@ -28,6 +59,9 @@ export const findAndSendMedia = async <T extends IDownload>(
     useCopy?: boolean; // Use copyMessage instead of forwardMessage (default: true)
     caption?: string; // Optional caption for copied messages
     fromChatId?: number; // Override the from chat ID (default: download.chatId)
+    // Inline keyboard for the copied message, built from the cached record id
+    replyMarkup?: (downloadId: string) => InlineKeyboardMarkup;
+    replyToMessageId?: number;
   }
 ): Promise<unknown> => {
   try {
@@ -110,21 +144,27 @@ export const findAndSendMedia = async <T extends IDownload>(
         download: mongoose.Types.ObjectId;
       }> = [];
 
-      // Copy all carousel items
-      for (const item of carousel as ICarouselItem[]) {
-        const result = await ctx.telegram.copyMessage(
+      // copyMessages keeps albums grouped (sent as one media group);
+      // it takes up to 100 message ids, in increasing order
+      const messageIds = (carousel as ICarouselItem[])
+        .map((item) => item.messageId)
+        .sort((a, b) => a - b);
+      for (let i = 0; i < messageIds.length; i += 100) {
+        const results = await ctx.telegram.copyMessages(
           chatId,
           download.chatId,
-          item.messageId
+          messageIds.slice(i, i + 100)
         );
-        copiedMessages.push(result.message_id);
+        copiedMessages.push(...results.map((r) => r.message_id));
+      }
 
-        // Prepare forward record for batch insert
-        if (ctx.userMongoId) {
+      // Prepare forward records for batch insert
+      if (ctx.userMongoId) {
+        for (const messageId of copiedMessages) {
           forwardRecords.push({
             user: ctx.userMongoId,
             chatId: chatId,
-            messageId: result.message_id,
+            messageId,
             download: download._id,
           });
         }
@@ -163,14 +203,38 @@ export const findAndSendMedia = async <T extends IDownload>(
       // Use copyMessage to resend the media (allows custom caption)
       // Use forwardMessage to forward the original message
       if (useCopy) {
-        const result = await ctx.telegram.copyMessage(
-          chatId,
-          fromChatId,
-          download.messageId,
-          {
-            caption: options?.caption,
-          }
-        );
+        const extra = {
+          reply_markup: options?.replyMarkup?.(String(download._id)),
+          reply_parameters: options?.replyToMessageId
+            ? {
+                message_id: options.replyToMessageId,
+                allow_sending_without_reply: true,
+              }
+            : undefined,
+        };
+
+        let result: { message_id: number };
+        try {
+          result = await ctx.telegram.copyMessage(
+            chatId,
+            fromChatId,
+            download.messageId,
+            { ...extra, caption: options?.caption }
+          );
+        } catch (copyError) {
+          // The original message is gone (chat deleted, bot blocked...):
+          // the file still lives on Telegram, send it by file_id
+          if (!download.fileId) throw copyError;
+          logger.warning("Copy failed, sending cached media by file_id", {
+            downloadId: download._id,
+            error:
+              copyError instanceof Error ? copyError.message : String(copyError),
+          });
+          result = await sendByFileId(ctx, download, {
+            ...extra,
+            caption: options?.caption ?? buildCaption(ctx, null),
+          });
+        }
 
         // Save forward record for copied message
         await saveForwardRecord(result.message_id);

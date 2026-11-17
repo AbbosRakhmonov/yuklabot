@@ -8,10 +8,14 @@ export const config = {
   timezone: process.env.TZ || "Asia/Tashkent",
   telegram: {
     apiRoot: telegramApiRoot,
-    localMode: telegramLocalMode,
-    // Local Bot API server allows 2GB uploads, the cloud API only 50MB
+    // Talk to a self-hosted Bot API server instead of api.telegram.org
     isLocalBotApi:
       telegramLocalMode || telegramApiRoot !== DEFAULT_TELEGRAM_API,
+    // Self-hosted server running with --local: only then uploads up to 2GB
+    // and file:// paths work (the cloud API and a server without --local
+    // stay at 50MB)
+    localMode:
+      telegramLocalMode && telegramApiRoot !== DEFAULT_TELEGRAM_API,
   },
   webhook: {
     enabled: process.env.WEBHOOK_ENABLED === "true",
@@ -25,15 +29,31 @@ export const config = {
   ytdlp: process.env.YTDLP_PATH || "yt-dlp",
   galleryDl: process.env.GALLERY_DL_PATH || "gallery-dl",
   ffmpeg: process.env.FFMPEG_PATH || "ffmpeg",
+  // ffprobe ships with ffmpeg: by default look next to FFMPEG_PATH
+  ffprobe:
+    process.env.FFPROBE_PATH ||
+    (process.env.FFMPEG_PATH
+      ? process.env.FFMPEG_PATH.replace(/ffmpeg(\.exe)?$/i, "ffprobe$1")
+      : "ffprobe"),
+  // A video over Telegram's limit is split into at most this many parts
+  maxVideoParts: Math.max(
+    1,
+    parseInt(process.env.MAX_VIDEO_PARTS || "10", 10) || 10,
+  ),
   instagramCookies: process.env.INSTAGRAM_COOKIES_PATH || undefined,
   logLevel: process.env.LOG_LEVEL || "info",
   downloadDir: process.env.DOWNLOAD_DIR || "downloads",
   // TikTok proxy configuration (required for regions where TikTok is blocked)
   // Format: http://proxy:port or socks5://proxy:port
   tiktokProxy: process.env.TIKTOK_PROXY || undefined,
-  // Max yt-dlp/gallery-dl/ffmpeg processes running at the same time
+  // Max downloads/conversions (yt-dlp, gallery-dl, ffmpeg) at the same time
   maxConcurrentProcesses: Math.max(
     1,
     parseInt(process.env.MAX_CONCURRENT_PROCESSES || "3", 10) || 3,
+  ),
+  // Max quick metadata lookups at the same time, separate from downloads
+  maxConcurrentInfoProcesses: Math.max(
+    1,
+    parseInt(process.env.MAX_CONCURRENT_INFO_PROCESSES || "5", 10) || 5,
   ),
 };
