@@ -104,7 +104,11 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
   const hint = isVideo ? MESSAGES.INFO.VIDEO_QUALITY : MESSAGES.INFO.AUDIO_QUALITY;
   const caption = `📺 ${service.data?.title} - ${service.data?.duration_string}\n\n${hint}`;
   if (service.data?.thumbnail) {
-    await ctx.replyWithPhoto(service.data.thumbnail, { caption, ...keyboard });
+    try {
+      await ctx.replyWithPhoto(service.data.thumbnail, { caption, ...keyboard });
+    } catch {
+      await ctx.reply(caption, keyboard);
+    }
   } else {
     await ctx.reply(caption, keyboard);
   }

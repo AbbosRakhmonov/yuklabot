@@ -2,10 +2,11 @@ import fs from "fs/promises";
 import path from "path";
 import { config } from "@/config/config";
 import logger from "@/config/logger";
-import { MAX_FILE_SIZE } from "@/constants";
+import { MAX_FILE_SIZE, MESSAGES } from "@/constants";
 import { sanitizeUrl } from "@/helpers/sanitizeUrl";
 import { IYoutubeData, IYoutubeFormat } from "@/interfaces/IYoutubeData";
 import { YOUTUBE_GET_INFO_ARGS } from "@/scenes/youtube/constants";
+import { UserError } from "@/utils/errors";
 import {
   createDownloadFolder,
   getDownloadFolderPath,
@@ -156,6 +157,10 @@ export class YoutubeService {
 
     this.data = JSON.parse(result.stdout) as IYoutubeData;
     this.proxyId = proxy?.id ?? null;
+
+    if (this.data.is_live || this.data.live_status === "is_live") {
+      throw new UserError(MESSAGES.ERROR.LIVE_STREAM_UNSUPPORTED);
+    }
 
     try {
       this.folderName = await createDownloadFolder(this.data.id || "youtube");

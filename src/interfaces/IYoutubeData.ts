@@ -8,6 +8,8 @@ export interface IYoutubeData {
   uploader?: string;
   view_count: number;
   media_type?: string; // "video" (not always present)
+  is_live?: boolean;
+  live_status?: string;
   formats: IYoutubeFormat[];
 }
 
