@@ -19,6 +19,7 @@ export const MESSAGES = {
       "Bu videoning hech bir sifati Telegram limitiga sig‘maydi. Audio sifatida yuklab ko‘ring.",
     NO_FITTING_AUDIO:
       "Bu audioning hech bir sifati Telegram limitiga sig‘maydi.",
+    NO_AUDIO: "Bu videoda audio mavjud emas.",
     QUALITY_TOO_LARGE: (limit: string) =>
       `🚫 Bu sifat Telegram limitidan (${limit}) katta, uni yuborib bo‘lmaydi. Boshqa sifatni tanlang.`,
     VIDEO_TOO_MANY_PARTS: (maxParts: number) =>

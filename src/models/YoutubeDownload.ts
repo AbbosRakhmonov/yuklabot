@@ -19,6 +19,21 @@ const YoutubeDownloadSchema: Schema = new Schema<IYoutubeDownload>({
   },
 });
 
+YoutubeDownloadSchema.index({
+  url: 1,
+  platform: 1,
+  mediaType: 1,
+  height: 1,
+  createdAt: -1,
+});
+YoutubeDownloadSchema.index({
+  url: 1,
+  platform: 1,
+  mediaType: 1,
+  formatId: 1,
+  createdAt: -1,
+});
+
 export default DownloadModel.discriminator<IYoutubeDownload>(
   EPlatform.YOUTUBE,
   YoutubeDownloadSchema

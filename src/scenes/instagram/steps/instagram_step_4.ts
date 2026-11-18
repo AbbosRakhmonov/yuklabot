@@ -12,7 +12,7 @@ import { UserError } from "@/utils/errors";
 
 export const instagramStep4 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
 
     // The session keeps only the service's fields: rebuild it
     const serviceState = ctx.wizard.state.instagram.service;

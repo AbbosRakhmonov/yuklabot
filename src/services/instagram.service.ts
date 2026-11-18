@@ -165,6 +165,12 @@ export class InstagramService {
     }
 
     await this.cleanupFolder();
+    if (
+      lastError instanceof Error &&
+      lastError.message.includes("does not contain any stream")
+    ) {
+      throw new UserError(MESSAGES.ERROR.NO_AUDIO);
+    }
     throw lastError;
   }
 

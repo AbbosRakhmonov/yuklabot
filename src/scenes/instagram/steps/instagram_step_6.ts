@@ -25,27 +25,30 @@ export const instagramStep6 = async (ctx: IMyContext) => {
   if (!result) {
     if (data.image_url) {
       const stopAction = startContinuousAction(ctx, "upload_photo");
-      const imageUrl = data.image_url;
-      // By URL (Telegram fetches it); streamed through us if that fails
-      const sentMessage = await withNetworkRetry(() =>
-        sendWithCdnFallback(imageUrl, service.proxyId, "photo.jpg", (media) =>
-          ctx.replyWithPhoto(media)
-        )
-      );
-      stopAction();
+      try {
+        const imageUrl = data.image_url;
+        // By URL (Telegram fetches it); streamed through us if that fails
+        const sentMessage = await withNetworkRetry(() =>
+          sendWithCdnFallback(imageUrl, service.proxyId, "photo.jpg", (media) =>
+            ctx.replyWithPhoto(media)
+          )
+        );
 
-      if (ctx.userMongoId) {
-        await InstagramDownload.create({
-          user: ctx.userMongoId,
-          url: service.url,
-          chatId: ctx.chat?.id || ctx.from?.id || 0,
-          messageId: sentMessage.message_id,
-          fileId: getMessageFileId(sentMessage),
-          platform: EPlatform.INSTAGRAM,
-          fileName: data.title || data.shortcode || "instagram_image",
-          fileSize: 0,
-          mediaType: EMediaType.IMAGE,
-        });
+        if (ctx.userMongoId) {
+          await InstagramDownload.create({
+            user: ctx.userMongoId,
+            url: service.url,
+            chatId: ctx.chat?.id || ctx.from?.id || 0,
+            messageId: sentMessage.message_id,
+            fileId: getMessageFileId(sentMessage),
+            platform: EPlatform.INSTAGRAM,
+            fileName: data.title || data.shortcode || "instagram_image",
+            fileSize: 0,
+            mediaType: EMediaType.IMAGE,
+          });
+        }
+      } finally {
+        stopAction();
       }
     }
   }

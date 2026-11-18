@@ -8,7 +8,7 @@ import { startCommand } from "./commands/start.command";
 import logger from "./config/logger";
 import { loggerMiddleware } from "./middleware/logger";
 import { userActivityMiddleware } from "./middleware/userActivity";
-import { rateLimiterMiddleware } from "./middleware/rateLimiter";
+import { rateLimiter, rateLimiterMiddleware } from "./middleware/rateLimiter";
 import { createWebhookServer, deleteWebhook } from "./config/webhook";
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
@@ -45,8 +45,10 @@ const gracefulShutdown = async (): Promise<void> => {
     // Stop continuous actions
     continuousAction.stopAll();
 
-    // Stop user activity cache cleanup
+    // Stop user activity cache cleanup and rate limiter cleanup
     userActivityCache.stopCleanup();
+    await userActivityCache.flushPending().catch(() => {});
+    rateLimiter.stopCleanup();
 
     // Stop bot if it exists
     if (botInstance) {
@@ -163,6 +165,9 @@ async function main(): Promise<void> {
       if (!config.webhook.url) {
         throw new Error("WEBHOOK_URL is required when WEBHOOK_ENABLED is true");
       }
+
+      // Populate botInfo in webhook mode so ctx.botInfo is available for captions
+      bot.botInfo = await bot.telegram.getMe();
 
       // Create Express server with bot.createWebhook()
       const app = await createWebhookServer(bot, config.webhook.url);

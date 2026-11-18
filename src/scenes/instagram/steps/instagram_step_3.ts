@@ -81,7 +81,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
  */
 export const instagramStep3 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     await sendInstagramVideo(ctx);
   }
   return ctx.scene.leave();

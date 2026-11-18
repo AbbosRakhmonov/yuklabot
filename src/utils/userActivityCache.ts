@@ -1,4 +1,6 @@
 import { myDayjs } from "./myDayjs";
+import User from "@/models/User";
+import logger from "@/config/logger";
 
 interface UserActivityCache {
   lastUpdate: Date;
@@ -35,6 +37,23 @@ class UserActivityCacheManager {
     for (const [userId, cached] of this.cache.entries()) {
       const age = now.diff(cached.lastUpdate, "ms");
       if (age > this.CACHE_TTL_MS) {
+        const { messageCount, commandCount, lastCommand, lastCommandAt } =
+          cached.pendingUpdates;
+        if (messageCount > 0 || commandCount > 0) {
+          const update: Record<string, unknown> = {
+            $inc: { messageCount, commandCount },
+          };
+          if (lastCommand) {
+            update.lastCommand = lastCommand;
+            update.lastCommandAt = lastCommandAt;
+          }
+          User.updateOne({ telegramId: userId }, update).catch((err) => {
+            logger.error("Failed to flush expired user activity", {
+              userId,
+              error: err,
+            });
+          });
+        }
         this.cache.delete(userId);
       }
     }
@@ -143,6 +162,36 @@ class UserActivityCacheManager {
    * Clear all cache (for cleanup)
    */
   clearAll(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Flush all pending updates to database
+   */
+  async flushPending(): Promise<void> {
+    const promises: Promise<unknown>[] = [];
+    for (const [userId, cached] of this.cache.entries()) {
+      const { messageCount, commandCount, lastCommand, lastCommandAt } =
+        cached.pendingUpdates;
+      if (messageCount > 0 || commandCount > 0) {
+        const update: Record<string, unknown> = {
+          $inc: { messageCount, commandCount },
+        };
+        if (lastCommand) {
+          update.lastCommand = lastCommand;
+          update.lastCommandAt = lastCommandAt;
+        }
+        promises.push(
+          User.updateOne({ telegramId: userId }, update).catch((err) => {
+            logger.error("Failed to flush pending user activity", {
+              userId,
+              error: err,
+            });
+          })
+        );
+      }
+    }
+    await Promise.all(promises);
     this.cache.clear();
   }
 

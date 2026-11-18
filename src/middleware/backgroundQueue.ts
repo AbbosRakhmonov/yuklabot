@@ -48,12 +48,15 @@ export const createBackgroundQueueMiddleware = (
     }
 
     queue.size++;
-    queue.tail = queue.tail.then(run).finally(() => {
-      queue.size--;
-      if (queue.size === 0 && queues.get(key) === queue) {
-        queues.delete(key);
-      }
-    });
+    queue.tail = queue.tail
+      .catch(() => {})
+      .then(run)
+      .finally(() => {
+        queue.size--;
+        if (queue.size === 0 && queues.get(key) === queue) {
+          queues.delete(key);
+        }
+      });
     queues.set(key, queue);
 
     // Resolve immediately, the update keeps running in the background
