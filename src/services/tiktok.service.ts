@@ -10,7 +10,7 @@ import {
   removeDownloadFolder,
 } from "@/utils/downloadFolder";
 import { spawnProcessOrThrow } from "@/utils/processManager";
-import { ProxyEntry, proxyArgs, withProxyRotation } from "@/utils/proxy";
+import { ProxyEntry, proxyArgs, tiktokProxyEntry, withProxyRotation } from "@/utils/proxy";
 import {
   getYtdlpProgressOptions,
   ProgressCallback,
@@ -144,7 +144,7 @@ export class TiktokService {
             ignoreStdout: true,
             signal: options.signal,
           }),
-        { signal: options.signal },
+        { signal: options.signal, extraProxies: [tiktokProxyEntry] },
       );
 
       const files = (await fs.readdir(folderPath)).sort();
@@ -214,7 +214,7 @@ export class TiktokService {
             onStdoutLine: progress.onStdoutLine,
             signal,
           }),
-        { signal },
+        { signal, extraProxies: [tiktokProxyEntry] },
       );
       this.data = this.parseInfo(result.stdout);
     } catch (error) {

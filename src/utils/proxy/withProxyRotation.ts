@@ -8,6 +8,8 @@ export interface ProxyRotationOptions {
   signal?: AbortSignal;
   // Proxy (or null = server IP) not to try again, e.g. one that just failed
   exclude?: ProxyEntry | null;
+  // Extra candidate proxies (e.g. platform-specific proxy like tiktokProxy)
+  extraProxies?: (ProxyEntry | null)[];
 }
 
 export interface ProxyRotationResult<T> {
@@ -24,9 +26,9 @@ export interface ProxyRotationResult<T> {
 export const withProxyRotation = async <T>(
   label: string,
   action: (proxy: ProxyEntry | null) => Promise<T>,
-  { signal, exclude }: ProxyRotationOptions = {},
+  { signal, exclude, extraProxies }: ProxyRotationOptions = {},
 ): Promise<ProxyRotationResult<T>> => {
-  const order = proxyPool.getAttemptOrder(exclude);
+  const order = proxyPool.getAttemptOrder(exclude, extraProxies);
   let lastError: unknown;
 
   for (const [index, proxy] of order.entries()) {

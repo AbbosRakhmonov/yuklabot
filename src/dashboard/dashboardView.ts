@@ -4,6 +4,7 @@ export const getDashboardHtml = (): string => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/admin/">
   <title>YuklaBot - Monitoring Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -55,7 +56,7 @@ export const getDashboardHtml = (): string => {
 <body class="bg-dark-950 text-slate-100 min-h-screen flex flex-col custom-scroll">
 
   <!-- LOGIN MODAL -->
-  <div id="loginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+  <div id="loginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
     <div class="bg-dark-900 border border-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl">
       <div class="text-center mb-6">
         <div class="w-16 h-16 bg-brand-600/20 text-brand-500 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-500/30">
@@ -528,12 +529,12 @@ export const getDashboardHtml = (): string => {
       errBox.classList.add('hidden');
 
       try {
-        const res = await fetch('./api/login', {
+        const res = await fetch('/admin/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: u, password: p }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (res.ok && data.token) {
           authToken = data.token;
           localStorage.setItem('yuklabot_admin_token', authToken);
@@ -544,7 +545,7 @@ export const getDashboardHtml = (): string => {
           document.getElementById('loginModal').classList.add('hidden');
           initDashboard();
         } else {
-          errBox.textContent = data.error || 'Kirishda xatolik';
+          errBox.textContent = data.error || "Noto'g'ri foydalanuvchi nomi yoki parol";
           errBox.classList.remove('hidden');
         }
       } catch (err) {
@@ -553,12 +554,15 @@ export const getDashboardHtml = (): string => {
       }
     });
 
-    function logout() {
-      if (confirm('Boshqaruv panelidan chiqmoqchimisiz?')) {
+    function logout(forced = false) {
+      if (forced || confirm("Boshqaruv panelidan chiqmoqchimisiz?")) {
         localStorage.removeItem('yuklabot_admin_token');
         authToken = null;
-        if (sseSource) sseSource.close();
-        location.reload();
+        if (sseSource) {
+          sseSource.close();
+          sseSource = null;
+        }
+        document.getElementById('loginModal').classList.remove('hidden');
       }
     }
 
@@ -576,7 +580,7 @@ export const getDashboardHtml = (): string => {
       }
 
       const statusEl = document.getElementById('connectionStatus');
-      sseSource = new EventSource(\`./api/events?token=\${authToken}\`);
+      sseSource = new EventSource(\`/admin/api/events?token=\${authToken}\`);
 
       sseSource.onopen = () => {
         statusEl.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400';
@@ -606,7 +610,7 @@ export const getDashboardHtml = (): string => {
     // Tab switcher
     function switchTab(tab) {
       currentTab = tab;
-      ['live', 'stats', 'history', 'users'].forEach(t => {
+      ['live', 'stats', 'history', 'users'].forEach((t) => {
         const content = document.getElementById(\`tabContent-\${t}\`);
         const btn = document.getElementById(\`tabBtn-\${t}\`);
         if (content) {
@@ -619,6 +623,15 @@ export const getDashboardHtml = (): string => {
           } else {
             btn.className = 'tab-btn px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-2';
           }
+        }
+      });
+
+      document.querySelectorAll('.mobile-tab-btn').forEach((mbtn, idx) => {
+        const tabs = ['live', 'stats', 'history', 'users'];
+        if (tabs[idx] === tab) {
+          mbtn.className = 'mobile-tab-btn text-xs px-3 py-1.5 rounded-lg bg-brand-600 text-white whitespace-nowrap';
+        } else {
+          mbtn.className = 'mobile-tab-btn text-xs px-3 py-1.5 rounded-lg text-slate-400 whitespace-nowrap';
         }
       });
 
@@ -639,7 +652,7 @@ export const getDashboardHtml = (): string => {
       };
       const res = await fetch(url, options);
       if (res.status === 401) {
-        logout();
+        logout(true);
         throw new Error('Unauthorized');
       }
       return res;
@@ -648,7 +661,7 @@ export const getDashboardHtml = (): string => {
     // Fetch Stats
     async function fetchStats() {
       try {
-        const res = await authFetch('./api/stats');
+        const res = await authFetch('/admin/api/stats');
         const data = await res.json();
         renderStats(data);
       } catch (err) {
@@ -738,7 +751,7 @@ export const getDashboardHtml = (): string => {
     // Active Tasks Logic
     async function fetchActiveTasks() {
       try {
-        const res = await authFetch('./api/active');
+        const res = await authFetch('/admin/api/active');
         const data = await res.json();
         renderActiveTasks(data.active || []);
         renderRecentCompleted(data.recent || []);
@@ -909,7 +922,7 @@ export const getDashboardHtml = (): string => {
       if (!confirm('Ushbu yuklash jarayonini majburiy to\\'xtatmoqchimisiz?')) return;
 
       try {
-        const res = await authFetch(\`./api/kill/\${taskId}\`, { method: 'POST' });
+        const res = await authFetch(\`/admin/api/kill/\${taskId}\`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
           showToast(data.message || "Jarayon to'xtatildi", 'success');
@@ -984,7 +997,7 @@ export const getDashboardHtml = (): string => {
       if (endDate) params.append('endDate', endDate);
 
       try {
-        const res = await authFetch(\`./api/history?\${params.toString()}\`);
+        const res = await authFetch(\`/admin/api/history?\${params.toString()}\`);
         const data = await res.json();
         renderHistoryTable(data.items || [], data.pagination || {});
       } catch (err) {
@@ -1105,7 +1118,7 @@ export const getDashboardHtml = (): string => {
       resBox.classList.add('hidden');
 
       try {
-        const res = await authFetch('./api/send-file', {
+        const res = await authFetch('/admin/api/send-file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1153,7 +1166,7 @@ export const getDashboardHtml = (): string => {
       if (search) params.append('search', search);
 
       try {
-        const res = await authFetch(\`./api/users?\${params.toString()}\`);
+        const res = await authFetch(\`/admin/api/users?\${params.toString()}\`);
         const data = await res.json();
         renderUsersTable(data.users || [], data.pagination || {});
       } catch (err) {

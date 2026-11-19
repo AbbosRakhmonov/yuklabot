@@ -87,7 +87,7 @@ export const config = {
   },
   logLevel: process.env.LOG_LEVEL || "info",
   downloadDir: process.env.DOWNLOAD_DIR || "downloads",
-  // Deprecated: an extra proxy added to the PROXY_LIST pool
+  // Dedicated proxy for TikTok (which is blocked by ISPs in Uzbekistan/certain regions)
   // Format: http://proxy:port or socks5://proxy:port
   tiktokProxy: process.env.TIKTOK_PROXY || undefined,
   // Max downloads/conversions (yt-dlp, gallery-dl, ffmpeg) at the same time

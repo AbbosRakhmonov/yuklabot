@@ -31,6 +31,26 @@ const parseList = (raw: string): string[] =>
     .map((line) => line.replace(/#.*$/, "").trim())
     .filter(Boolean);
 
+export const parseProxyEntry = (raw: string): ProxyEntry | null => {
+  // "host:port" without a scheme: treat as an HTTP proxy
+  const withScheme = /^[a-z0-9]+:\/\//i.test(raw) ? raw : `http://${raw}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    logger.warning("Invalid proxy skipped", { proxy: raw.replace(/:[^:@/]*@/, ":***@") });
+    return null;
+  }
+  if (!SUPPORTED_PROTOCOLS.includes(url.protocol) || !url.port) {
+    logger.warning("Unsupported proxy skipped (need http/https/socks5 and a port)", {
+      proxy: `${url.protocol}//${url.host}`,
+    });
+    return null;
+  }
+  const id = crypto.createHash("sha1").update(withScheme).digest("hex").slice(0, 10);
+  return { id, url: withScheme };
+};
+
 const loadProxies = (): ProxyEntry[] => {
   const urls = parseList(config.proxy.list);
 
@@ -45,31 +65,19 @@ const loadProxies = (): ProxyEntry[] => {
     }
   }
 
-  if (config.tiktokProxy) urls.push(config.tiktokProxy);
-
   const entries = new Map<string, ProxyEntry>();
   for (const raw of urls) {
-    // "host:port" without a scheme: treat as an HTTP proxy
-    const withScheme = /^[a-z0-9]+:\/\//i.test(raw) ? raw : `http://${raw}`;
-    let url: URL;
-    try {
-      url = new URL(withScheme);
-    } catch {
-      logger.warning("Invalid proxy skipped", { proxy: raw.replace(/:[^:@/]*@/, ":***@") });
-      continue;
-    }
-    if (!SUPPORTED_PROTOCOLS.includes(url.protocol) || !url.port) {
-      logger.warning("Unsupported proxy skipped (need http/https/socks5 and a port)", {
-        proxy: `${url.protocol}//${url.host}`,
-      });
-      continue;
-    }
-    const id = crypto.createHash("sha1").update(withScheme).digest("hex").slice(0, 10);
-    entries.set(id, { id, url: withScheme });
+    const entry = parseProxyEntry(raw);
+    if (entry) entries.set(entry.id, entry);
   }
 
   return [...entries.values()];
 };
+
+// Dedicated proxy for TikTok (which is blocked by ISPs in Uzbekistan/certain regions)
+export const tiktokProxyEntry: ProxyEntry | null = config.tiktokProxy
+  ? parseProxyEntry(config.tiktokProxy)
+  : null;
 
 class ProxyPool {
   private readonly proxies: ProxyEntry[];
@@ -84,6 +92,9 @@ class ProxyPool {
         proxies: proxies.map(maskProxy),
       });
     }
+    if (tiktokProxyEntry) {
+      logger.info(`Dedicated TikTok proxy configured: ${maskProxy(tiktokProxyEntry)}`);
+    }
   }
 
   get size(): number {
@@ -91,7 +102,9 @@ class ProxyPool {
   }
 
   getById(id: string | null | undefined): ProxyEntry | undefined {
-    return id ? this.proxies.find((p) => p.id === id) : undefined;
+    if (!id) return undefined;
+    if (tiktokProxyEntry && tiktokProxyEntry.id === id) return tiktokProxyEntry;
+    return this.proxies.find((p) => p.id === id);
   }
 
   /**
@@ -99,9 +112,19 @@ class ProxyPool {
    * at the next one (round-robin), then the server's own IP (null).
    * Proxies in cooldown are skipped unless every one of them is.
    */
-  getAttemptOrder(exclude?: ProxyEntry | null): (ProxyEntry | null)[] {
+  getAttemptOrder(
+    exclude?: ProxyEntry | null,
+    extraProxies?: (ProxyEntry | null)[],
+  ): (ProxyEntry | null)[] {
     const now = Date.now();
-    const candidates = this.proxies.filter((p) => p.id !== exclude?.id);
+    const allCandidates = [
+      ...this.proxies,
+      ...(extraProxies || []).filter((p): p is ProxyEntry => Boolean(p)),
+    ];
+    const uniqueMap = new Map<string, ProxyEntry>();
+    for (const p of allCandidates) uniqueMap.set(p.id, p);
+
+    const candidates = [...uniqueMap.values()].filter((p) => p.id !== exclude?.id);
     let healthy = candidates.filter((p) => (this.cooldownUntil.get(p.id) ?? 0) <= now);
     if (healthy.length === 0 && !config.proxy.directFallback) healthy = candidates;
 

@@ -1,6 +1,6 @@
 import { ProxyEntry } from "./proxyPool";
 
-export { maskProxy, proxyPool } from "./proxyPool";
+export { maskProxy, proxyPool, tiktokProxyEntry } from "./proxyPool";
 export type { ProxyEntry } from "./proxyPool";
 export { withProxyRotation } from "./withProxyRotation";
 export { BlockedError, isBlockingError, PermanentError } from "./errors";
