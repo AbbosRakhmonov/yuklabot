@@ -42,7 +42,10 @@ const toMenuOption = (
     option.size === undefined
       ? ""
       : ` · ${option.isApproxSize ? "~" : ""}${formatFileSize(option.size)}`;
-  const parts = option.parts && option.parts > 1 ? ` (${option.parts} qism)` : "";
+  const parts =
+    option.parts && option.parts > 1
+      ? ` (${option.isApproxSize ? "~" : ""}${option.parts} qism)`
+      : "";
   return option.tooLarge
     ? { text: `🚫 ${option.label}${size}`, data: tooLargeData, selectable: false }
     : { text: `${icon} ${option.label}${size}${parts}`, data, selectable: true };

@@ -117,10 +117,13 @@ export const splitVideo = async (
     if (partCount > config.maxVideoParts) break;
 
     const outDir = path.join(path.dirname(filePath), `parts_${partCount}`);
+    // Slight headroom so keyframe jitter doesn't spill the tail into an extra orphan part
+    const segmentSeconds =
+      partCount > 1 ? duration / (partCount - 0.15) : duration;
     const files = await cutIntoParts(
       filePath,
       outDir,
-      duration / partCount,
+      segmentSeconds,
       options.signal,
     );
     const sizes = await Promise.all(files.map((f) => fs.stat(f).then((s) => s.size)));

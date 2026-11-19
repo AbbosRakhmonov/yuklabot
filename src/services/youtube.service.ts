@@ -66,7 +66,15 @@ export interface IDownloadOptions {
   signal?: AbortSignal;
 }
 
-const formatSize = (f: IYoutubeFormat) => f.filesize ?? f.filesize_approx;
+const formatSize = (f: IYoutubeFormat): number | undefined => {
+  if (f.filesize != null) return f.filesize;
+  if (f.filesize_approx != null) {
+    // yt-dlp's filesize_approx is based only on raw stream bitrates;
+    // muxing DASH video+audio into MP4 with faststart adds ~8% on disk
+    return Math.round(f.filesize_approx * 1.08);
+  }
+  return undefined;
+};
 
 /**
  * The format yt-dlp picks for `bv[height=X]` with `-t mp4`:

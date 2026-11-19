@@ -72,7 +72,7 @@ export const MAX_FILE_SIZE = config.telegram.localMode
   : 50 * 1024 * 1024;
 // A part is aimed at this share of the limit: parts can only be cut at
 // keyframes, so their sizes vary a bit
-export const VIDEO_PART_FILL = 0.9;
+export const VIDEO_PART_FILL = 0.83;
 
 // Telegram's own wording of the limit, for messages
 export const MAX_FILE_SIZE_LABEL = config.telegram.localMode
