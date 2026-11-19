@@ -1,3 +1,7 @@
+import { sharedDownload } from "@/helpers/sharedDownload";
+import { deliveryConfirmed, deliveryStage, observeAttempt } from "@/utils/deliveryAttempt";
+import { UserError } from "@/utils/errors";
+import { MESSAGES } from "@/constants";
 import { EMediaType } from "@/enums/EMediaType";
 import { EPlatform } from "@/enums/EPlatform";
 import { findAndSendMedia, IAlbumItem, sendAlbum } from "@/helpers";
@@ -13,26 +17,21 @@ import logger from "@/config/logger";
  * Carousel post: all items as one album (groups of 10)
  */
 export const instagramStep5 = async (ctx: IMyContext) => {
-  const data = ctx.wizard.state.instagram.data;
+  const { service } = ctx.wizard.state.instagram;
+  await observeAttempt(ctx, EPlatform.INSTAGRAM, "source", () => sharedDownload(ctx,
+    [EPlatform.INSTAGRAM, service.url, EMediaType.POST],
+    preferFileId => findAndSendMedia(ctx, InstagramDownload, {
+      url: service.url, platform: EPlatform.INSTAGRAM, mediaType: EMediaType.POST,
+    }, { preferFileId }),
+    () => uploadCarousel(ctx),
+  ));
+  return ctx.scene.leave();
+};
 
-  const service = ctx.wizard.state.instagram.service;
-
-  const result = await findAndSendMedia(ctx, InstagramDownload, {
-    url: service.url,
-    platform: EPlatform.INSTAGRAM,
-    mediaType: EMediaType.POST,
-  });
-
-  if (result) return ctx.scene.leave();
-
+async function uploadCarousel(ctx: IMyContext) {
+  const { service, data } = ctx.wizard.state.instagram;
   const carouselMedia = data.carousel_media;
-
-  if (!carouselMedia || carouselMedia.length === 0) return ctx.scene.leave();
-
-  if (!ctx.userMongoId || !ctx.chat?.id) {
-    logger.warning("Missing userMongoId or chatId for carousel post");
-    return ctx.scene.leave();
-  }
+  if (!carouselMedia?.length) throw new UserError(MESSAGES.ERROR.MEDIA_NOT_FOUND);
 
   const albumItems: IAlbumItem[] = [];
   for (const item of carouselMedia) {
@@ -60,15 +59,18 @@ export const instagramStep5 = async (ctx: IMyContext) => {
     }
   }
 
+  deliveryStage("telegram");
   const stopAction = startContinuousAction(ctx, "upload_photo");
   const carouselItems = await sendAlbum(
     ctx,
     albumItems,
-    buildCaption(ctx, null)
+    buildCaption(ctx, null),
+    carouselMedia.length
   ).finally(stopAction);
 
   // Save all carousel items to database
-  if (carouselItems.length > 0) {
+  deliveryConfirmed();
+  if (ctx.userMongoId && ctx.chat) {
     try {
       await InstagramDownload.create({
         user: ctx.userMongoId,
@@ -95,13 +97,5 @@ export const instagramStep5 = async (ctx: IMyContext) => {
         userId: ctx.from?.id,
       });
     }
-  } else {
-    logger.warning("No carousel items were sent successfully", {
-      url: service.url,
-      totalItems: carouselMedia.length,
-      userId: ctx.from?.id,
-    });
   }
-
-  return ctx.scene.leave();
-};
+}

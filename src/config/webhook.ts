@@ -1,3 +1,4 @@
+import type { UpdateQueue } from "@/middleware/backgroundQueue";
 import express, { Express, Request } from "express";
 import { Telegraf } from "telegraf";
 import logger from "./logger";
@@ -7,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
 import fs from "fs/promises";
 import os from "os";
+import { activeTasks } from "@/utils/activeTasks";
 import { createAdminRouter } from "@/dashboard/adminRouter";
 
 export const createApp = (bot: Telegraf<IMyContext>): Express => {
@@ -124,19 +126,7 @@ export const createApp = (bot: Telegraf<IMyContext>): Express => {
       percentUsed: parseFloat(percentUsed),
     };
 
-    // Check active downloads folder count
-    try {
-      const downloadDir = config.downloadDir;
-      try {
-        await fs.access(downloadDir);
-        const entries = await fs.readdir(downloadDir, { withFileTypes: true });
-        health.activeDownloads = entries.filter((e) => e.isDirectory()).length;
-      } catch {
-        health.activeDownloads = 0;
-      }
-    } catch (error) {
-      logger.debug("Failed to check active downloads", { error });
-    }
+    health.activeDownloads = activeTasks.getSummary().activeCount;
 
     const statusCode = health.status === "ok" ? 200 : 503;
     res.status(statusCode).json(health);
@@ -147,7 +137,8 @@ export const createApp = (bot: Telegraf<IMyContext>): Express => {
 
 export const createWebhookServer = async (
   bot: Telegraf<IMyContext>,
-  webhookDomain: string
+  webhookDomain: string,
+  queue: UpdateQueue
 ): Promise<Express> => {
   // Validate webhook secret token in production
   if (process.env.NODE_ENV === "production" && !config.webhook.secretToken) {
@@ -161,20 +152,28 @@ export const createWebhookServer = async (
   const webhookPath =
     config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
 
-  logger.info(`Webhook path: ${webhookPath}`);
-
-  // Create webhook options
-  const webhookOptions = {
-    domain: webhookDomain,
-    path: webhookPath,
-    drop_pending_updates: true,
-    ...(config.webhook.secretToken && {
-      secret_token: config.webhook.secretToken,
-    }),
-  };
-
-  // Register Telegram webhook middleware
-  app.use(await bot.createWebhook(webhookOptions));
+  const domain = new URL(webhookDomain.includes("://") ? webhookDomain : "https://" + webhookDomain);
+  await bot.telegram.setWebhook("https://" + domain.host + webhookPath, {
+    drop_pending_updates: false,
+    ...(config.webhook.secretToken && { secret_token: config.webhook.secretToken }),
+  });
+  app.post(webhookPath, async (req, res) => {
+    if (config.webhook.secretToken && req.get("X-Telegram-Bot-Api-Secret-Token") !== config.webhook.secretToken) {
+      res.sendStatus(403);
+      return;
+    }
+    if (!Number.isSafeInteger(req.body?.update_id)) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      await queue.accept(req.body);
+      res.sendStatus(200);
+    } catch (error) {
+      logger.error("Webhook admission failed", { error });
+      res.sendStatus(503);
+    }
+  });
 
   logger.info(
     `✅ Webhook server configured at: ${webhookDomain}${webhookPath}`
@@ -184,16 +183,4 @@ export const createWebhookServer = async (
   );
 
   return app;
-};
-
-export const deleteWebhook = async (
-  bot: Telegraf<IMyContext>
-): Promise<void> => {
-  try {
-    await bot.telegram.deleteWebhook();
-    logger.info("Webhook deleted");
-  } catch (error) {
-    logger.error("Failed to delete webhook", { error });
-    throw error;
-  }
 };

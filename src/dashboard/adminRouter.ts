@@ -1,5 +1,12 @@
+import { speedReport } from "./speedReport";
+import { requestHistory } from "@/utils/requestHistory";
+import DeliveryAttempt from "@/models/DeliveryAttempt";
+import Forward from "@/models/Forward";
+import { Types } from "mongoose";
+import { materialPreview } from "./materialPreview";
 import express, { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import rateLimit from "express-rate-limit";
 import { Telegraf } from "telegraf";
 import { config } from "@/config/config";
 import logger from "@/config/logger";
@@ -19,41 +26,33 @@ import { getDashboardHtml } from "./dashboardView";
 export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => {
   const router = express.Router();
 
-  // In-memory admin tokens: token -> expiration timestamp
-  const validTokens = new Map<string, number>();
-  const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-  const generateToken = (): string => {
-    const token = crypto.randomBytes(32).toString("hex");
-    validTokens.set(token, Date.now() + TOKEN_TTL_MS);
-    return token;
+  const sessions = new Map<string, Set<Response>>();
+  const ttl = 24 * 60 * 60 * 1000;
+  const cookie = "yuklabot_session";
+  const cookieOptions = {
+    path: "/admin", httpOnly: true, secure: process.env.NODE_ENV === "production",
+    sameSite: "strict" as const,
   };
-
-  const verifyToken = (token?: string): boolean => {
-    if (!token) return false;
-    const expiresAt = validTokens.get(token);
-    if (!expiresAt) return false;
-    if (Date.now() > expiresAt) {
-      validTokens.delete(token);
-      return false;
-    }
-    return true;
+  const tokenFor = (req: Request) => req.headers.cookie?.split(";")
+    .map(part => part.trim()).find(part => part.startsWith(cookie + "="))?.slice(cookie.length + 1);
+  const revoke = (token: string) => {
+    const streams = sessions.get(token);
+    sessions.delete(token);
+    for (const stream of streams ?? []) stream.end();
   };
-
-  // Auth Middleware
   const requireAdminAuth = (req: Request, res: Response, next: NextFunction): void => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : (req.query.token as string | undefined);
-
-    if (verifyToken(token)) {
-      next();
-      return;
-    }
-
-    res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
+    if (sessions.has(tokenFor(req) ?? "")) next();
+    else res.status(401).json({ error: "Sessiya tugagan" });
   };
+  router.use((_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (config.admin.password.trim()) next();
+    else res.status(503).send("Admin paneli sozlanmagan");
+  });
+  const loginLimit = rateLimit({
+    windowMs: 15 * 60 * 1000, limit: 8, skipSuccessfulRequests: true,
+    message: { error: "Urinishlar juda ko‘p. Keyinroq qayta urining." },
+  });
 
   // 1. Dashboard Single Page App
   router.get("/", (_req: Request, res: Response) => {
@@ -62,16 +61,18 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
   });
 
   // 2. Login endpoint
-  router.post("/api/login", (req: Request, res: Response) => {
-    const { username, password } = req.body;
+  router.post("/api/login", loginLimit, (req: Request, res: Response) => {
+    const { username, password } = req.body ?? {};
 
     if (
       username === config.admin.username &&
       password === config.admin.password
     ) {
-      const token = generateToken();
+      const token = crypto.randomBytes(32).toString("hex");
+      sessions.set(token, new Set());
+      setTimeout(() => revoke(token), ttl).unref();
+      res.cookie(cookie, token, { ...cookieOptions, secure: cookieOptions.secure || req.secure, maxAge: ttl });
       res.json({
-        token,
         adminChatId: config.admin.chatId,
         username: config.admin.username,
       });
@@ -81,11 +82,20 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
     res.status(401).json({ error: "Noto'g'ri foydalanuvchi nomi yoki parol" });
   });
 
+  router.get("/api/session", requireAdminAuth, (_req, res) => {
+    res.json({ adminChatId: config.admin.chatId });
+  });
+  router.post("/api/logout", requireAdminAuth, (req, res) => {
+    revoke(tokenFor(req)!);
+    res.clearCookie(cookie, cookieOptions).sendStatus(204);
+  });
+
   // 3. Overall Statistics
   router.get("/api/stats", requireAdminAuth, async (_req: Request, res: Response) => {
     try {
-      const todayStart = myDayjs().startOf("day").toDate();
-      const thisWeekStart = myDayjs().subtract(7, "day").startOf("day").toDate();
+      const now = myDayjs().tz(config.timezone);
+      const todayStart = now.startOf("day").toDate();
+      const thisWeekStart = now.subtract(6, "day").startOf("day").toDate();
 
       const [
         totalUsers,
@@ -97,6 +107,8 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
         youtubeDownloads,
         instagramDownloads,
         tiktokDownloads,
+        outcomes,
+        mediaCounts,
       ] = await Promise.all([
         User.countDocuments(),
         User.countDocuments({ lastActiveAt: { $gte: todayStart } }),
@@ -107,6 +119,13 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
         YoutubeDownload.countDocuments(),
         InstagramDownload.countDocuments(),
         TiktokDownload.countDocuments(),
+        DeliveryAttempt.aggregate<{ _id: { platform: string; outcome: string; reason?: string }; count: number }>([
+          { $match: { finishedAt: { $gte: new Date(now.valueOf() - 86400000), $lte: now.toDate() } } },
+          { $group: { _id: { platform: "$platform", outcome: "$outcome", reason: "$reason" }, count: { $sum: 1 } } },
+        ]),
+        Download.aggregate<{ _id: string; count: number }>([
+          { $group: { _id: "$mediaType", count: { $sum: 1 } } },
+        ]),
       ]);
 
       // System stats
@@ -131,6 +150,8 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
       const taskSummary = activeTasks.getSummary();
 
       res.json({
+        outcomesAsOf: now.valueOf(),
+        outcomes24h: outcomes.map(({ _id, count }) => ({ ..._id, count })),
         users: {
           total: totalUsers,
           todayActive: todayActiveUsers,
@@ -140,6 +161,7 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
           total: totalDownloads,
           today: todayDownloads,
           thisWeek: thisWeekDownloads,
+          byMediaType: Object.fromEntries(mediaCounts.map(row => [row._id, row.count])),
           byPlatform: {
             youtube: youtubeDownloads,
             instagram: instagramDownloads,
@@ -225,6 +247,37 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
         ];
       }
 
+      if (req.query.userId !== undefined) {
+        const id = String(req.query.userId);
+        if (!/^[a-f\d]{24}$/i.test(id)) {
+          res.status(400).json({ error: "Foydalanuvchi ID noto‘g‘ri" });
+          return;
+        }
+        const userId = new Types.ObjectId(id);
+        const user = await User.findById(userId).select("telegramId username firstName").lean();
+        if (!user) { res.sendStatus(404); return; }
+        const { createdAt, ...materialFilter } = filter;
+        const recipient = { user: userId, ...(createdAt ? { createdAt } : {}) };
+        const [result] = await Download.aggregate([
+          { $match: recipient },
+          { $project: { material: "$_id", createdAt: 1 } },
+          { $unionWith: { coll: Forward.collection.name, pipeline: [
+            { $match: recipient }, { $project: { material: "$download", createdAt: 1 } },
+          ] } },
+          { $group: { _id: "$material", receivedAt: { $max: "$createdAt" } } },
+          { $lookup: { from: Download.collection.name, localField: "_id", foreignField: "_id", as: "download" } },
+          { $unwind: "$download" },
+          { $replaceRoot: { newRoot: { $mergeObjects: ["$download", { createdAt: "$receivedAt" }] } } },
+          { $match: materialFilter },
+          { $facet: { items: [{ $sort: { createdAt: -1, _id: -1 } }, { $skip: skip }, { $limit: limit }],
+            counts: [{ $count: "total" }] } },
+        ]);
+        const total = result?.counts[0]?.total ?? 0;
+        res.json({ items: (result?.items ?? []).map((item: Record<string, unknown>) => ({
+          ...item, user, preview: materialPreview(String(item.url)),
+        })), pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+        return;
+      }
       const [items, total] = await Promise.all([
         Download.find(filter)
           .sort({ createdAt: -1 })
@@ -236,7 +289,7 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
       ]);
 
       res.json({
-        items,
+        items: items.map(item => ({ ...item, preview: materialPreview(item.url) })),
         pagination: {
           page,
           limit,
@@ -251,6 +304,71 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
   });
 
   // 7. Users List
+  router.get("/api/failures", requireAdminAuth, async (req, res) => {
+    const { platform, reason } = req.query;
+    const end = Number(req.query.asOf);
+    const page = Number(req.query.page ?? 1);
+    if (typeof platform !== "string" || !["youtube", "instagram", "tiktok"].includes(platform)
+      || typeof reason !== "string" || !/^[a-z_]{1,40}$/.test(reason)
+      || !Number.isSafeInteger(end) || end <= 0 || end > Date.now()
+      || !Number.isSafeInteger(page) || page < 1 || page > 1000000) {
+      res.status(400).end();
+      return;
+    }
+    try {
+      const [result] = await DeliveryAttempt.aggregate([
+        { $match: { outcome: "failed", platform, reason, finishedAt: { $gte: new Date(end - 86400000), $lte: new Date(end) } } },
+        { $set: { root: { $ifNull: ["$requestId", "$_id"] } } },
+        { $lookup: { from: "telegram_updates", localField: "root", foreignField: "_id", as: "history" } },
+        { $set: { history: { $arrayElemAt: ["$history", 0] } } },
+        { $project: { finishedAt: 1, stage: 1, userId: { $ifNull: ["$userId", "$history.key"] },
+          url: "$history.url", requestId: { $cond: ["$history.url", "$root", null] } } },
+        { $facet: {
+          items: [{ $sort: { finishedAt: -1, _id: -1 } }, { $skip: (page - 1) * 20 }, { $limit: 20 }],
+          total: [{ $count: "n" }],
+          users: [{ $match: { userId: { $ne: null } } }, { $group: { _id: "$userId" } }, { $count: "n" }],
+          links: [{ $match: { url: { $ne: null } } }, { $group: { _id: "$url" } }, { $count: "n" }],
+        } },
+      ]);
+      res.json({ items: result.items, total: result.total[0]?.n ?? 0, users: result.users[0]?.n ?? 0, links: result.links[0]?.n ?? 0 });
+    } catch (error) {
+      logger.error("Could not load failed requests", { error });
+      res.status(500).end();
+    }
+  });
+
+  router.get("/api/speed", requireAdminAuth, async (_req, res) => {
+    try {
+      const now = Date.now();
+      const cursor = requestHistory().find({ measuredAt: { $gte: new Date(now - 86400000), $lte: new Date(now) }, outcome: "success" },
+        { projection: { metrics: 1, platform: 1, mode: 1, key: 1 } });
+      res.json(await speedReport(cursor));
+    } catch (error) {
+      logger.error("Could not load speed report", { error });
+      res.status(500).end();
+    }
+  });
+
+  router.get("/api/requests", requireAdminAuth, async (req, res) => {
+    const userId = Number(req.query.userId);
+    const exact = req.query.id === undefined ? undefined : Number(req.query.id);
+    const before = req.query.before === undefined ? undefined : Number(req.query.before);
+    if (!Number.isSafeInteger(userId) || userId <= 0 || (exact !== undefined && !Number.isSafeInteger(exact)) || (before !== undefined && !Number.isSafeInteger(before))) {
+      res.status(400).json({ error: "Noto‘g‘ri parametr" });
+      return;
+    }
+    try {
+      const rows = await requestHistory().find({
+        key: userId, url: { $exists: true }, ...(before !== undefined && { _id: { $lt: before } }), ...(exact !== undefined && { _id: exact }),
+      }, { projection: { _id: 1, url: 1, outcome: 1, receivedAt: 1, startedAt: 1, state: 1, notice: 1, noticeAt: 1, acceptedNoticeAt: 1, acceptedNotice: 1, events: 1 } })
+        .sort({ _id: -1 }).limit(21).toArray();
+      res.json({ items: rows.slice(0, 20), more: rows.length > 20 });
+    } catch (error) {
+      logger.error("Could not load request history", { error });
+      res.status(500).json({ error: "Tarixni yuklab bo‘lmadi" });
+    }
+  });
+
   router.get("/api/users", requireAdminAuth, async (req: Request, res: Response) => {
     try {
       const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
@@ -371,13 +489,9 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
   });
 
   // 9. Real-time Server-Sent Events (SSE)
-  router.get("/api/events", (req: Request, res: Response) => {
-    const token = req.query.token as string | undefined;
-    if (!verifyToken(token)) {
-      res.status(401).end();
-      return;
-    }
-
+  router.get("/api/events", requireAdminAuth, (req: Request, res: Response) => {
+    const streams = sessions.get(tokenFor(req)!)!;
+    streams.add(res);
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -386,6 +500,7 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
     const sendUpdate = () => {
       const data = JSON.stringify({
         active: activeTasks.getActiveTasks(),
+        recent: activeTasks.getRecentCompleted(),
         summary: activeTasks.getSummary(),
         timestamp: new Date().toISOString(),
       });
@@ -404,7 +519,8 @@ export const createAdminRouter = (bot: Telegraf<IMyContext>): express.Router => 
       res.write(": heartbeat\n\n");
     }, 15000);
 
-    req.on("close", () => {
+    res.on("close", () => {
+      streams.delete(res);
       clearInterval(heartbeat);
       activeTasks.removeListener("change", onChange);
       res.end();

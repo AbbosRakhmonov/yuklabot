@@ -31,6 +31,7 @@ export const DownloadSchema: Schema = new Schema<IDownload>(
     // Telegram file_id: a short text reference, the file itself stays on
     // Telegram. Fallback when the cached message can't be copied anymore.
     fileId: String,
+    cacheIncomplete: Boolean,
     fileName: String,
     fileSize: Number,
     mediaType: {

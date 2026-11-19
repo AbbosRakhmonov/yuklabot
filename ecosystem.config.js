@@ -3,7 +3,7 @@ module.exports = {
     name: "yuklabot",
     script: "./dist/index.js",
     instances: 1,
-    exec_mode: "cluster",
+    exec_mode: "fork",
     cwd: "/mnt/storage/projects/yuklabot",
     env: {
       NODE_ENV: "production",

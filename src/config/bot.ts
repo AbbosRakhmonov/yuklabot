@@ -11,7 +11,7 @@ export const createBot = (): Telegraf<IMyContext> => {
   }
 
   // Configure bot options for Local Bot API if enabled
-  const botOptions: Partial<Telegraf.Options<IMyContext>> = {};
+  const botOptions: Partial<Telegraf.Options<IMyContext>> = { handlerTimeout: Infinity };
 
   if (config.telegram.isLocalBotApi) {
     botOptions.telegram = {

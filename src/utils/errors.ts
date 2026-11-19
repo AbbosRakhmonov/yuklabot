@@ -13,3 +13,9 @@ export class UserError extends Error {
 
 export const getUserErrorMessage = (error: unknown): string =>
   error instanceof UserError ? error.message : MESSAGES.ERROR.GENERIC;
+
+export class AlbumDeliveryError extends UserError {
+  constructor(sent: number, total: number) {
+    super(`Albomdagi ${total} ta fayldan ${sent} tasi yuborilgani tasdiqlandi.`);
+  }
+}

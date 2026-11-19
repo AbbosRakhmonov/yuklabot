@@ -1,3 +1,5 @@
+import { sharedDownload } from "@/helpers/sharedDownload";
+import { observeAttempt } from "@/utils/deliveryAttempt";
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import path from "path";
@@ -55,18 +57,16 @@ export async function sendTiktokPost(
 ): Promise<void> {
   const service = new TiktokService(url);
 
-  const cached = await findAndSendMedia(
-    ctx,
-    TiktokDownload,
-    {
-      url: service.url,
-      platform: EPlatform.TIKTOK,
-      mediaType: [EMediaType.VIDEO, EMediaType.POST],
-    },
-    { replyMarkup: audioButton }
-  );
-  if (cached) return;
+  await observeAttempt(ctx, EPlatform.TIKTOK, "source", () => sharedDownload(ctx,
+    [EPlatform.TIKTOK, service.url, "post"],
+    preferFileId => findAndSendMedia(ctx, TiktokDownload, {
+      url: service.url, platform: EPlatform.TIKTOK, mediaType: [EMediaType.VIDEO, EMediaType.POST],
+    }, { replyMarkup: audioButton, preferFileId }),
+    () => downloadTiktokPost(ctx, service),
+  ));
+}
 
+async function downloadTiktokPost(ctx: IMyContext, service: TiktokService): Promise<void> {
   if (service.isPhotoPost()) {
     return sendTiktokPhotos(ctx, service);
   }
@@ -99,6 +99,7 @@ async function sendTiktokVideo(
     title: service.data?.title,
     quality: "HD",
     signal: progress.signal,
+    onWait: progress.showQueue,
   });
 
   let stopVideoAction: (() => void) | null = null;
@@ -183,6 +184,7 @@ async function sendTiktokPhotos(
     title: "TikTok Slideshow",
     quality: "Photos",
     signal: progress.signal,
+    onWait: progress.showQueue,
   });
 
   let stopPhotoAction: (() => void) | null = null;
@@ -267,14 +269,16 @@ export async function sendTiktokAudio(
 ): Promise<void> {
   const service = new TiktokService(url);
 
-  const cached = await findAndSendMedia(
-    ctx,
-    TiktokDownload,
-    { url: service.url, platform: EPlatform.TIKTOK, mediaType: EMediaType.AUDIO },
-    { replyToMessageId }
-  );
-  if (cached) return;
+  await observeAttempt(ctx, EPlatform.TIKTOK, "source", () => sharedDownload(ctx,
+    [EPlatform.TIKTOK, service.url, "audio"],
+    preferFileId => findAndSendMedia(ctx, TiktokDownload, {
+      url: service.url, platform: EPlatform.TIKTOK, mediaType: EMediaType.AUDIO,
+    }, { replyToMessageId, preferFileId }),
+    () => downloadTiktokAudio(ctx, service, replyToMessageId),
+  ));
+}
 
+async function downloadTiktokAudio(ctx: IMyContext, service: TiktokService, replyToMessageId?: number): Promise<void> {
   const progress = await ProgressMessage.send(
     ctx,
     `🎵 ${MESSAGES.INFO.DOWNLOADING_AUDIO}`
@@ -290,6 +294,7 @@ export async function sendTiktokAudio(
     title: service.data?.title,
     quality: "Audio",
     signal: progress.signal,
+    onWait: progress.showQueue,
   });
 
   let stopAudioAction: (() => void) | null = null;

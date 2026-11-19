@@ -1,3 +1,4 @@
+import { deliveryInfo } from "@/utils/requestHistory";
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import TiktokDownload from "@/models/TiktokDownload";
@@ -27,5 +28,6 @@ export const handleTiktokAudioButton = async (
     throw new UserError(MESSAGES.ERROR.LINK_EXPIRED);
   }
 
+  deliveryInfo({ url: download.url });
   await sendTiktokAudio(ctx, download.url, ctx.callbackQuery?.message?.message_id);
 };

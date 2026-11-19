@@ -11,7 +11,7 @@ export const adminCommand = async (ctx: IMyContext): Promise<void> => {
   const userId = ctx.from?.id;
 
   // Only allow configured admin
-  if (!userId || (config.admin.chatId && userId !== config.admin.chatId)) {
+  if (!userId || userId !== config.admin.chatId) {
     await ctx.reply("⛔ Kechirasiz, ushbu buyruq faqat bot admini uchun mo'ljallangan.");
     return;
   }

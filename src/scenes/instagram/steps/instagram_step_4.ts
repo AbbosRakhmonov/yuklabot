@@ -1,3 +1,6 @@
+import { sharedDownload } from "@/helpers/sharedDownload";
+import { observeAttempt } from "@/utils/deliveryAttempt";
+import { ProgressMessage } from "@/utils/progressMessage";
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { callbackQuery } from "telegraf/filters";
@@ -21,63 +24,66 @@ export const instagramStep4 = async (ctx: IMyContext) => {
     service.data = ctx.wizard.state.instagram.data ?? serviceState.data;
     service.proxyId = serviceState.proxyId ?? null;
 
-    const result = await findAndSendMedia(ctx, InstagramDownload, {
-      url: service.url,
-      platform: EPlatform.INSTAGRAM,
-      mediaType: EMediaType.AUDIO,
-    });
-
-    if (!result) {
-      const videoUrl = service.data?.video_url;
-      if (!videoUrl) throw new UserError(MESSAGES.ERROR.MEDIA_NOT_FOUND);
-
-      const monitorTask = activeTasks.startTask({
-        userId: ctx.from?.id ?? 0,
-        username: ctx.from?.username,
-        firstName: ctx.from?.first_name,
-        platform: EPlatform.INSTAGRAM,
-        mediaType: EMediaType.AUDIO,
-        url: service.url,
-        title: service.data?.title || "Instagram Audio",
-        quality: "Audio",
-      });
-
-      const message = await ctx.sendMessage(MESSAGES.INFO.DOWNLOADING_AUDIO);
-
-      try {
-        monitorTask.updateStage("downloading");
-        const audioPath = await service.extractAudio(videoUrl);
-        const fileSize = await getUploadableFileSize(audioPath);
-        await ctx.deleteMessage(message.message_id);
-        monitorTask.updateStage("uploading");
-        const sentMessage = await ctx.replyWithAudio(
-          toUploadInput(audioPath)
-        );
-        const fileName = path.basename(audioPath);
-        monitorTask.complete();
-
-        // Create InstagramDownload record
-        if (ctx.userMongoId) {
-          await InstagramDownload.create({
-            user: ctx.userMongoId,
-            url: service.url,
-            chatId: ctx.chat?.id || ctx.from?.id || 0,
-            messageId: sentMessage.message_id,
-            fileId: getMessageFileId(sentMessage),
-            platform: EPlatform.INSTAGRAM,
-            fileName: fileName,
-            fileSize: fileSize,
-            mediaType: EMediaType.AUDIO,
-          });
-        }
-      } catch (error) {
-        monitorTask.fail(error);
-        await ctx.deleteMessage(message.message_id).catch(() => {});
-        throw error;
-      } finally {
-        await service.cleanupFolder();
-      }
-    }
+    await observeAttempt(ctx, EPlatform.INSTAGRAM, "source", () => sharedDownload(ctx,
+      [EPlatform.INSTAGRAM, service.url, EMediaType.AUDIO],
+      preferFileId => findAndSendMedia(ctx, InstagramDownload, {
+        url: service.url, platform: EPlatform.INSTAGRAM, mediaType: EMediaType.AUDIO,
+      }, { preferFileId }),
+      () => extractAudio(ctx, service),
+    ));
   }
   return ctx.scene.leave();
 };
+
+async function extractAudio(ctx: IMyContext, service: InstagramService) {
+  const videoUrl = service.data?.video_url;
+  if (!videoUrl) throw new UserError(MESSAGES.ERROR.MEDIA_NOT_FOUND);
+
+  const progress = await ProgressMessage.send(ctx, MESSAGES.INFO.DOWNLOADING_AUDIO);
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.INSTAGRAM,
+    mediaType: EMediaType.AUDIO,
+    url: service.url,
+    title: service.data?.title || "Instagram Audio",
+    quality: "Audio",
+    signal: progress.signal,
+    onWait: progress.showQueue,
+  });
+
+  try {
+    monitorTask.updateStage("downloading");
+    const audioPath = await service.extractAudio(videoUrl, monitorTask.signal);
+    const fileSize = await getUploadableFileSize(audioPath);
+    await progress.delete();
+    monitorTask.updateStage("uploading");
+    const sentMessage = await ctx.replyWithAudio(
+      toUploadInput(audioPath)
+    );
+    const fileName = path.basename(audioPath);
+    monitorTask.complete();
+
+    // Create InstagramDownload record
+    if (ctx.userMongoId) {
+      await InstagramDownload.create({
+        user: ctx.userMongoId,
+        url: service.url,
+        chatId: ctx.chat?.id || ctx.from?.id || 0,
+        messageId: sentMessage.message_id,
+        fileId: getMessageFileId(sentMessage),
+        platform: EPlatform.INSTAGRAM,
+        fileName: fileName,
+        fileSize: fileSize,
+        mediaType: EMediaType.AUDIO,
+      });
+    }
+  } catch (error) {
+    monitorTask.fail(error);
+    await progress.delete().catch(() => {});
+    throw error;
+  } finally {
+    await service.cleanupFolder();
+  }
+}

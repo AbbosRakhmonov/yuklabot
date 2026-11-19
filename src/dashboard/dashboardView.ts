@@ -289,6 +289,7 @@ export const getDashboardHtml = (): string => {
             <i class="fa-solid fa-circle-check text-emerald-400"></i>
             <span>Yaqinda yakunlangan yuklamalar</span>
           </h3>
+          <div id="platformTimingSummary" class="mb-3 text-xs text-slate-400"></div>
           <div id="recentCompletedContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <!-- Dynamic items -->
           </div>
@@ -297,6 +298,7 @@ export const getDashboardHtml = (): string => {
 
       <!-- TAB 2: OVERALL STATISTICS & CHARTS -->
       <div id="tabContent-stats" class="hidden space-y-6">
+        <p id="statsError" role="alert" hidden>Statistikani yuklab bo‘lmadi. Birozdan keyin qayta urinib ko‘ring.</p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <!-- Platform Distribution Chart -->
           <div class="bg-dark-900 border border-slate-800/80 rounded-2xl p-5">
@@ -316,11 +318,28 @@ export const getDashboardHtml = (): string => {
               <span>Media turlari bo'yicha taqsimot</span>
             </h3>
             <div class="relative h-64">
+              <p id="statsChartFallback" hidden></p>
               <canvas id="mediaChart"></canvas>
             </div>
           </div>
         </div>
 
+        <section class="bg-dark-900 border border-slate-800 rounded-2xl p-5">
+          <h3 class="text-sm font-bold mb-2">Oxirgi 24 soatdagi yuklash natijalari</h3>
+          <p class="text-xs text-slate-400 mb-3">Muvaffaqiyat foizi yakunlangan va xato bilan tugagan so‘rovlar bo‘yicha hisoblanadi.</p>
+          <div class="overflow-x-auto"><table class="w-full text-left text-sm">
+            <thead><tr><th>Platforma</th><th>Jami</th><th>Yetkazildi</th><th>Xato</th><th>Bekor qilindi</th><th>Muvaffaqiyat</th><th>Xato sabablari</th></tr></thead>
+            <tbody id="deliveryOutcomes"></tbody>
+          </table></div>
+        </section>
+        <section class="bg-dark-900 border border-slate-800 rounded-2xl p-5">
+          <h3 class="text-sm font-bold mb-2">Tezlik · oxirgi 24 soat</h3>
+          <p class="text-xs text-slate-400 mb-3">Yetkazilgan so‘rovlar. Vaqtlar soniyada: mediana / p95. Tayyorlash botning media jo‘natishdan tashqari ishlagan vaqtini ham qamrab oladi. Eng sekin so‘rovni aniqlashda foydalanuvchining tanlash vaqti chiqariladi.</p>
+          <p id="speedStatus" role="status"></p>
+          <div class="overflow-x-auto"><table class="w-full text-left text-sm">
+          <thead><tr><th>Platforma</th><th>Manba</th><th>Soni</th><th>Navbat</th><th>Tayyorlash</th><th>Telegram</th><th>Tanlov</th><th>Eng sekin</th></tr></thead>
+          <tbody id="speedRows"></tbody></table></div>
+        </section>
         <!-- Summary Stats Table -->
         <div class="bg-dark-900 border border-slate-800/80 rounded-2xl p-5">
           <h3 class="text-sm font-bold text-white mb-4">Statistika hisoboti</h3>
@@ -347,6 +366,15 @@ export const getDashboardHtml = (): string => {
 
       <!-- TAB 3: HISTORY & FILTERS -->
       <div id="tabContent-history" class="hidden space-y-4">
+        <div id="recipientFilter" hidden><strong id="recipientLabel"></strong>
+          <button type="button" onclick="showRecipient()" class="ml-3 text-sm text-sky-400">Barcha yuklamalar</button>
+        </div>
+        <dialog id="previewDialog" aria-labelledby="previewTitle" class="m-auto bg-slate-900 text-white rounded-2xl p-4 w-[min(95vw,760px)]">
+          <div class="flex justify-between items-center gap-3"><strong id="previewTitle"></strong>
+            <button onclick="document.getElementById('previewDialog').close()" autofocus>Yopish</button></div>
+          <div id="previewBody" class="my-3"></div>
+          <a id="previewSource" target="_blank" rel="noopener noreferrer" class="text-sky-400">Manbada ochish</a>
+        </dialog>
         <!-- FILTER BAR -->
         <div class="bg-dark-900 border border-slate-800/80 rounded-2xl p-4 space-y-3">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -484,10 +512,23 @@ export const getDashboardHtml = (): string => {
   </div>
 
   <!-- CLIENT-SIDE SCRIPT -->
+  <dialog id="failureDialog" aria-labelledby="failureTitle" class="m-auto bg-slate-900 text-white rounded-2xl p-5 w-[min(95vw,760px)] max-h-[85vh]">
+    <div class="flex justify-between"><h2 id="failureTitle"></h2><button onclick="failureDialog.close()">Yopish</button></div>
+    <p id="failureStatus" role="status" class="my-3 text-sm text-slate-400"></p>
+    <ul id="failureList"></ul>
+    <button id="moreFailures" hidden class="text-sky-400">Yana ko‘rsatish</button>
+  </dialog>
+  <dialog id="requestsDialog" aria-labelledby="requestsTitle" class="m-auto bg-slate-900 text-white rounded-2xl p-5 w-[min(95vw,760px)] max-h-[85vh]">
+    <div class="flex justify-between gap-4"><h2 id="requestsTitle"></h2><button onclick="requestsDialog.close()">Yopish</button></div>
+    <button onclick="loadRequests(true)" class="text-sky-400">Yangilash</button>
+    <div id="requestList"></div><p id="requestStatus" role="status"></p>
+    <button id="olderRequests" hidden onclick="loadRequests(false)" class="text-sky-400">Oldingilari</button>
+  </dialog>
   <script>
     // State
-    let authToken = localStorage.getItem('yuklabot_admin_token');
-    let adminChatId = localStorage.getItem('yuklabot_admin_chat_id') || '';
+    let statsTimer;
+    localStorage.removeItem("yuklabot_admin_token");
+    let adminChatId = '';
     let currentTab = 'live';
     let sseSource = null;
     let platformChartInstance = null;
@@ -497,6 +538,158 @@ export const getDashboardHtml = (): string => {
 
     // History Pagination State
     let historyPage = 1;
+    let recipientId = '';
+    let historyRequest = 0;
+    let historyItems = [];
+    let listedUsers = [];
+    function showRecipient(index) {
+      const user = listedUsers[index];
+      recipientId = user?._id || '';
+      document.getElementById('recipientFilter').hidden = !user;
+      document.getElementById('recipientLabel').textContent = user
+        ? (user.username ? '@' + user.username : user.firstName || '') + ' · ID ' + user.telegramId : '';
+      switchTab('history');
+    }
+    const requestsDialog = document.getElementById('requestsDialog');
+    const requestList = document.getElementById('requestList');
+    const olderRequests = document.getElementById('olderRequests');
+    const requestLabels = { replaced:'Keyingi link bilan almashtirildi', queued:'Navbatda', running:'Bajarilmoqda', waiting:'Tanlov kutilmoqda', ended:'Bosqich tugadi', done:'Bosqich tugadi', success:'Yetkazildi', failed:'Xato', cancelled:'Bekor qilindi', interrupted:'Bot qayta ishga tushdi', queue_full:'Navbat to‘la', rate_limit:'Tezlik cheklovi', source:'Manbaga murojaat', processing:'Fayl tayyorlash', telegram:'Telegram orqali yetkazish', reply:'Bot javobi', choice:'Tanlov', received:'Qabul qilindi', started:'Navbatdan chiqdi' };
+    let requestUser, beforeRequest, requestVersion = 0;
+    requestsDialog.addEventListener('close', () => { requestVersion++; requestList.replaceChildren(); });
+    let exactRequest = null;
+    const failureDialog = document.getElementById('failureDialog');
+    let failureVersion = 0;
+    failureDialog.addEventListener('close', () => {
+      failureVersion++;
+      document.getElementById('failureList').replaceChildren();
+    });
+    function openFailureGroup(button) {
+      const { platform, reason, asof } = button.dataset;
+      const version = ++failureVersion;
+      document.getElementById('failureTitle').textContent = platform + ' · ' + button.textContent;
+      const list = document.getElementById('failureList');
+      const status = document.getElementById('failureStatus');
+      const more = document.getElementById('moreFailures');
+      list.replaceChildren();
+      failureDialog.showModal();
+      let page = 1;
+      async function load() {
+        more.hidden = true;
+        status.textContent = 'Yuklanmoqda…';
+        try {
+          const res = await authFetch('/admin/api/failures?' + new URLSearchParams({ platform, reason, asOf:asof, page }));
+          if (!res.ok) throw Error();
+          const data = await res.json();
+          if (version !== failureVersion) return;
+          status.textContent = 'Jami xatolar: ' + data.total + ' · Aniqlangan foydalanuvchilar: ' + data.users + ' · Turli havolalar: ' + data.links;
+          for (const row of data.items) {
+            const li = document.createElement('li');
+            li.className = 'py-3 border-b border-slate-700 break-all';
+            li.textContent = [new Date(row.finishedAt).toLocaleString(), row.userId && 'ID ' + row.userId,
+              requestLabels[row.stage], row.url].filter(Boolean).join(' · ');
+            if (row.requestId != null && row.userId != null) {
+              const history = document.createElement('button');
+              history.className = 'block text-sky-400';
+              history.textContent = 'So‘rov tarixini ochish';
+              history.onclick = () => {
+                requestUser = row.userId;
+                exactRequest = row.requestId;
+                document.getElementById('requestsTitle').textContent = 'So‘rov #' + exactRequest;
+                requestsDialog.showModal();
+                loadRequests(true);
+              };
+              li.append(history);
+            } else {
+              li.append(' · Bog‘langan tarix mavjud emas');
+            }
+            list.append(li);
+          }
+          page++;
+          more.hidden = list.childElementCount >= data.total;
+          more.textContent = 'Yana ko‘rsatish';
+        } catch {
+          if (version !== failureVersion) return;
+          status.textContent = 'Xatolarni yuklab bo‘lmadi.';
+          more.textContent = 'Qayta urinish';
+          more.hidden = false;
+        }
+      }
+      more.onclick = load;
+      load();
+    }
+    function openRequests(index) {
+      exactRequest = null;
+      requestUser = listedUsers[index].telegramId;
+      document.getElementById('requestsTitle').textContent = 'So‘rovlar · ' + requestUser;
+      requestsDialog.showModal();
+      loadRequests(true);
+    }
+    async function loadRequests(reset) {
+      const version = ++requestVersion;
+      if (reset) { beforeRequest = null; requestList.replaceChildren(); }
+      olderRequests.hidden = true;
+      const status = document.getElementById('requestStatus');
+      status.textContent = 'Yuklanmoqda…';
+      try {
+        const res = await authFetch('/admin/api/requests?userId=' + requestUser + (exactRequest == null ? '' : '&id=' + exactRequest) + (beforeRequest == null ? '' : '&before=' + beforeRequest));
+        if (!res.ok) throw Error();
+        const data = await res.json();
+        if (version !== requestVersion) return;
+        for (const row of data.items) {
+          const details = document.createElement('details');
+          details.open = exactRequest != null;
+          details.className = 'border-b border-slate-700 py-3 break-all';
+          const summary = document.createElement('summary');
+          summary.textContent = new Date(row.receivedAt).toLocaleString() + ' · ' + (requestLabels[row.outcome || row.state] || row.state) + ' · ' + row.url;
+          details.append(summary);
+          const events = [{ at:row.receivedAt, kind:'received' }, ...(row.events || [])];
+          if (row.startedAt) events.push({ at:row.startedAt, kind:'started', detail: ((new Date(row.startedAt)-new Date(row.receivedAt))/1000).toFixed(1) + ' s navbatda' });
+          if (row.noticeAt) events.push({ at:row.noticeAt, kind:'reply', detail:row.notice });
+          if (row.acceptedNoticeAt) events.push({ at:row.acceptedNoticeAt, kind:'reply', detail:row.acceptedNotice || 'Havolangiz qabul qilindi. Tekshirilmoqda.' });
+          for (const e of events.sort((a,b) => new Date(a.at)-new Date(b.at))) {
+            const line = document.createElement('p');
+            line.className = 'ml-3 mt-1 text-sm text-slate-300';
+            line.textContent = new Date(e.at).toLocaleTimeString() + ' · ' + (requestLabels[e.kind] || e.kind) + (e.detail ? ' · ' + e.detail : '');
+            details.append(line);
+          }
+          requestList.append(details);
+          beforeRequest = row._id;
+        }
+        olderRequests.hidden = !data.more;
+        status.textContent = requestList.childElementCount ? '' : 'Bu foydalanuvchi uchun so‘rov tarixi bo‘sh.';
+      } catch {
+        if (version === requestVersion) { status.textContent = 'Tarixni yuklab bo‘lmadi.'; olderRequests.hidden = beforeRequest == null; }
+      }
+    }
+    const previewDialog = document.getElementById('previewDialog');
+    previewDialog.addEventListener('close', () => document.getElementById('previewBody').replaceChildren());
+    function openPreview(index) {
+      const item = historyItems[index];
+      if (!item) return;
+      const body = document.getElementById('previewBody');
+      body.replaceChildren();
+      document.getElementById('previewTitle').textContent = item.fileName || 'Material';
+      const link = document.getElementById('previewSource');
+      const source = safeSource(item.url);
+      link.hidden = !source;
+      if (source) link.href = source; else link.removeAttribute('href');
+      if (item.preview) {
+        const frame = document.createElement('iframe');
+        frame.title = item.fileName || 'Material';
+        frame.src = item.preview;
+        frame.allowFullscreen = true;
+        frame.referrerPolicy = 'strict-origin-when-cross-origin';
+        frame.style.cssText = 'width:100%;height:min(64vh,520px);border:0';
+        body.append(frame);
+      } else body.textContent = 'Bu havolani panel ichida ko‘rib bo‘lmaydi.';
+      previewDialog.showModal();
+    }
+    function safeSource(value) {
+      try {
+        const url = new URL(value);
+        return ['https:', 'http:'].includes(url.protocol) ? url.href : '';
+      } catch { return ''; }
+    }
     let historyLimit = 20;
     let searchDebounceTimeout = null;
 
@@ -510,11 +703,13 @@ export const getDashboardHtml = (): string => {
       checkAuth();
     });
 
-    function checkAuth() {
-      if (!authToken) {
+    async function checkAuth() {
+      const res = await fetch('/admin/api/session').catch(() => null);
+      if (!res?.ok) {
         document.getElementById('loginModal').classList.remove('hidden');
         return;
       }
+      adminChatId = (await res.json()).adminChatId || '';
       document.getElementById('loginModal').classList.add('hidden');
       initDashboard();
     }
@@ -523,7 +718,7 @@ export const getDashboardHtml = (): string => {
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const u = document.getElementById('loginUsername').value.trim();
-      const p = document.getElementById('loginPassword').value.trim();
+      const p = document.getElementById('loginPassword').value;
       const errBox = document.getElementById('loginError');
 
       errBox.classList.add('hidden');
@@ -535,13 +730,8 @@ export const getDashboardHtml = (): string => {
           body: JSON.stringify({ username: u, password: p }),
         });
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data.token) {
-          authToken = data.token;
-          localStorage.setItem('yuklabot_admin_token', authToken);
-          if (data.adminChatId) {
-            adminChatId = data.adminChatId;
-            localStorage.setItem('yuklabot_admin_chat_id', adminChatId);
-          }
+        if (res.ok) {
+          adminChatId = data.adminChatId || '';
           document.getElementById('loginModal').classList.add('hidden');
           initDashboard();
         } else {
@@ -554,10 +744,19 @@ export const getDashboardHtml = (): string => {
       }
     });
 
-    function logout(forced = false) {
+    async function logout(forced = false) {
       if (forced || confirm("Boshqaruv panelidan chiqmoqchimisiz?")) {
-        localStorage.removeItem('yuklabot_admin_token');
-        authToken = null;
+        if (!forced) {
+          const res = await fetch('/admin/api/logout', { method: 'POST' }).catch(() => null);
+          if (!res || (!res.ok && res.status !== 401)) {
+            showToast("Chiqish amalga oshmadi. Qayta urinib ko‘ring.", 'error');
+            return;
+          }
+        }
+        requestsDialog.close();
+        failureDialog.close();
+        previewDialog.close();
+        clearInterval(statsTimer);
         if (sseSource) {
           sseSource.close();
           sseSource = null;
@@ -570,7 +769,8 @@ export const getDashboardHtml = (): string => {
       connectSSE();
       fetchStats();
       fetchActiveTasks();
-      setInterval(fetchStats, 30000); // 30s poll for stats
+      clearInterval(statsTimer);
+      statsTimer = setInterval(fetchStats, 30000); // 30s poll for stats
     }
 
     // SSE Realtime Connection
@@ -580,7 +780,7 @@ export const getDashboardHtml = (): string => {
       }
 
       const statusEl = document.getElementById('connectionStatus');
-      sseSource = new EventSource(\`/admin/api/events?token=\${authToken}\`);
+      sseSource = new EventSource("/admin/api/events");
 
       sseSource.onopen = () => {
         statusEl.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400';
@@ -593,6 +793,7 @@ export const getDashboardHtml = (): string => {
           if (data.active) {
             renderActiveTasks(data.active);
           }
+          if (data.recent) renderRecentCompleted(data.recent);
           if (data.summary) {
             updateLiveMetrics(data.summary);
           }
@@ -636,6 +837,7 @@ export const getDashboardHtml = (): string => {
       });
 
       if (tab === 'stats') {
+        fetchSpeed();
         fetchStats();
       } else if (tab === 'history') {
         fetchHistory(1);
@@ -646,10 +848,6 @@ export const getDashboardHtml = (): string => {
 
     // Auth Fetch helper
     async function authFetch(url, options = {}) {
-      options.headers = {
-        ...options.headers,
-        'Authorization': \`Bearer \${authToken}\`,
-      };
       const res = await fetch(url, options);
       if (res.status === 401) {
         logout(true);
@@ -658,19 +856,60 @@ export const getDashboardHtml = (): string => {
       return res;
     }
 
+    let speedVersion = 0;
+    async function fetchSpeed() {
+      const version = ++speedVersion;
+      const body = document.getElementById('speedRows');
+      const status = document.getElementById('speedStatus');
+      body.replaceChildren();
+      status.textContent = 'Yuklanmoqda…';
+      const seconds = ms => (ms / 1000).toLocaleString('uz-UZ', { maximumFractionDigits: 2 });
+      try {
+        const res = await authFetch('/admin/api/speed');
+        if (!res.ok) throw Error();
+        const rows = await res.json();
+        if (version !== speedVersion) return;
+        for (const row of rows) {
+          const tr = body.insertRow();
+          const values = [row.platform, row.mode === 'cached' ? 'Kesh' : 'Yangi', row.count];
+          for (const stage of ['queue','preparation','telegram','choice']) {
+            const pair = row.stages[stage];
+            values.push(seconds(pair.median) + ' / ' + seconds(pair.p95));
+          }
+          for (const value of values) tr.insertCell().textContent = value;
+          const link = document.createElement('button');
+          link.className = 'text-sky-400';
+          link.textContent = seconds(row.slowest.ms) + ' s ↗';
+          link.onclick = () => {
+            requestUser = row.slowest.userId;
+            exactRequest = row.slowest.id;
+            document.getElementById('requestsTitle').textContent = 'So‘rov #' + exactRequest;
+            requestsDialog.showModal();
+            loadRequests(true);
+          };
+          tr.insertCell().append(link);
+        }
+        status.textContent = rows.length ? '' : 'Hozircha o‘lchangan muvaffaqiyatli so‘rovlar yo‘q.';
+      } catch {
+        if (version === speedVersion) status.textContent = 'Tezlik hisobotini yuklab bo‘lmadi.';
+      }
+    }
     // Fetch Stats
     async function fetchStats() {
       try {
         const res = await authFetch('/admin/api/stats');
+        if (!res.ok) throw new Error('Stats HTTP ' + res.status);
         const data = await res.json();
         renderStats(data);
+        document.getElementById('statsError').hidden = true;
       } catch (err) {
+        document.getElementById('statsError').hidden = false;
         console.error('Failed to fetch stats', err);
       }
     }
 
     function renderStats(data) {
-      if (!data) return;
+      if (!data?.downloads?.byPlatform || !data.downloads.byMediaType || !data.users || !data.system) throw new Error("Invalid stats response");
 
       document.getElementById('metricTotalUsers').textContent = Number(data.users?.total || 0).toLocaleString();
       document.getElementById('metricTodayUsers').textContent = \`Bugun faol: \${data.users?.todayActive || 0}\`;
@@ -680,18 +919,42 @@ export const getDashboardHtml = (): string => {
       document.getElementById('metricMemoryPercent').textContent = \`\${data.system?.memoryPercent || 0}%\`;
       document.getElementById('metricDiskInfo').textContent = \`Bo'sh disk: \${data.system?.diskFreeGB || 0} GB / \${data.system?.diskTotalGB || 0} GB\`;
 
-      document.getElementById('statYoutubeCount').textContent = Number(data.platforms?.youtube || 0).toLocaleString();
-      document.getElementById('statInstagramCount').textContent = Number(data.platforms?.instagram || 0).toLocaleString();
-      document.getElementById('statTiktokCount').textContent = Number(data.platforms?.tiktok || 0).toLocaleString();
+      document.getElementById('statYoutubeCount').textContent = Number(data.downloads.byPlatform.youtube || 0).toLocaleString();
+      document.getElementById('statInstagramCount').textContent = Number(data.downloads.byPlatform.instagram || 0).toLocaleString();
+      document.getElementById('statTiktokCount').textContent = Number(data.downloads.byPlatform.tiktok || 0).toLocaleString();
       document.getElementById('statTodayNewUsers').textContent = Number(data.users?.todayNew || 0).toLocaleString();
 
+      const reasons = { source: 'Manbadan olish', processing: 'Faylga ishlov berish', telegram: 'Telegramga yuborish', partial: 'Qisman yetkazildi', timeout: 'Vaqt tugadi', missing: 'Media topilmadi', private: 'Yopiq post', live: 'Jonli efir', too_large: 'Fayl juda katta', telegram_limit: 'Telegram limiti', telegram_forbidden: 'Chatga yuborish taqiqlangan' };
+      document.getElementById('deliveryOutcomes').innerHTML = ['youtube', 'instagram', 'tiktok'].map(platform => {
+        const rows = (data.outcomes24h || []).filter(row => row.platform === platform);
+        const count = outcome => rows.filter(row => row.outcome === outcome).reduce((sum, row) => sum + row.count, 0);
+        const ok = count('success'), failed = count('failed');
+        const percent = ok + failed ? (100 * ok / (ok + failed)).toFixed(1) + '%' : '—';
+        const breakdown = rows.filter(row => row.outcome === 'failed').sort((a,b) => b.count - a.count)
+          .map(row => {
+            const label = (Object.hasOwn(reasons, row.reason) ? reasons[row.reason] : 'Boshqa') + ': ' + Number(row.count);
+            if (!/^[a-z_]{1,40}$/.test(row.reason)) return label;
+            return '<button type="button" class="text-sky-400 hover:underline" onclick="openFailureGroup(this)" data-platform="' + platform + '" data-asof="' + Number(data.outcomesAsOf) + '" data-reason="' + row.reason + '">' + label + '</button>';
+          }).join(', ');
+        return '<tr><td>' + platform + '</td><td>' + (ok + failed + count('cancelled')) + '</td><td>' + ok + '</td><td>' + failed + '</td><td>' + count('cancelled') + '</td><td>' + percent + '</td><td>' + (breakdown || '—') + '</td></tr>';
+      }).join('');
       renderCharts(data);
     }
 
     function renderCharts(data) {
-      const pYt = data.platforms?.youtube || 0;
-      const pIg = data.platforms?.instagram || 0;
-      const pTt = data.platforms?.tiktok || 0;
+      const pYt = data.downloads.byPlatform.youtube || 0;
+      const pIg = data.downloads.byPlatform.instagram || 0;
+      const pTt = data.downloads.byPlatform.tiktok || 0;
+
+      const types = { video: 'Video', audio: 'Audio', image: 'Rasm', reel: 'Reel', post: 'Post', story: 'Story', document: 'Hujjat' };
+      const labels = Object.values(types);
+      const values = Object.keys(types).map(key => data.downloads.byMediaType[key] || 0);
+      const fallback = document.getElementById('statsChartFallback');
+      fallback.hidden = typeof Chart !== 'undefined';
+      if (!fallback.hidden) {
+        fallback.textContent = labels.map((label, i) => label + ': ' + values[i]).join(' · ');
+        return;
+      }
 
       // Platform chart
       const ctxP = document.getElementById('platformChart');
@@ -718,19 +981,16 @@ export const getDashboardHtml = (): string => {
       }
 
       // Media types chart
-      const mV = data.mediaTypes?.video || 0;
-      const mA = data.mediaTypes?.audio || 0;
-      const mI = data.mediaTypes?.image || 0;
       const ctxM = document.getElementById('mediaChart');
       if (ctxM) {
         if (mediaChartInstance) mediaChartInstance.destroy();
         mediaChartInstance = new Chart(ctxM, {
           type: 'bar',
           data: {
-            labels: ['Video', 'Audio', 'Rasm'],
+            labels,
             datasets: [{
               label: 'Yuklamalar',
-              data: [mV, mA, mI],
+              data: values,
               backgroundColor: ['#6366f1', '#10b981', '#f59e0b'],
               borderRadius: 8,
             }]
@@ -816,7 +1076,7 @@ export const getDashboardHtml = (): string => {
                              task.platform === 'instagram' ? 'fa-brands fa-instagram' :
                              'fa-brands fa-tiktok';
 
-        const stageText = task.stage === 'analyzing' ? '🔍 Tahlil qilinmoqda...' :
+        const stageText = task.stage === 'queued' ? 'Navbatda' : task.stage === 'analyzing' ? '🔍 Tahlil qilinmoqda...' :
                           task.stage === 'downloading' ? '⬇️ Yuklanmoqda...' :
                           task.stage === 'splitting' ? '✂️ Qismlarga bo\\'linmoqda...' :
                           '⬆️ Telegramga yuklanmoqda...';
@@ -900,6 +1160,14 @@ export const getDashboardHtml = (): string => {
 
     function renderRecentCompleted(items) {
       const container = document.getElementById('recentCompletedContainer');
+      const averages = [];
+      for (const platform of ['youtube', 'instagram', 'tiktok']) {
+        const sample = (items || []).filter(item => item.platform === platform && item.stage === 'completed');
+        if (!sample.length) continue;
+        const seconds = stage => Math.round(sample.reduce((sum, item) => sum + (item.timings?.[stage] || 0), 0) / sample.length / 1000);
+        averages.push(platform + ' (' + sample.length + ' ta): navbat ' + seconds('queued') + ' s, yuklash ' + seconds('downloading') + ' s, yuborish ' + seconds('uploading') + ' s');
+      }
+      document.getElementById('platformTimingSummary').textContent = averages.length ? 'Yaqindagi muvaffaqiyatli yuklamalar, o‘rtacha: ' + averages.join(' · ') : '';
       if (!items || items.length === 0) {
         container.innerHTML = '<div class="text-xs text-slate-500 italic col-span-3">Hali yakunlanganlar mavjud emas</div>';
         return;
@@ -911,8 +1179,9 @@ export const getDashboardHtml = (): string => {
             <div class="font-medium text-white truncate" title="\${escapeHtml(item.title || '')}">\${escapeHtml(item.title || 'Fayl')}</div>
             <div class="text-[11px] text-slate-400 mt-0.5">\${item.platform.toUpperCase()} • \${item.mediaType}</div>
           </div>
+          <div class="text-xs text-slate-400">Navbat \${Math.round((item.timings?.queued || 0)/1000)} s · Yuklash \${Math.round((item.timings?.downloading || 0)/1000)} s · Yuborish \${Math.round((item.timings?.uploading || 0)/1000)} s</div>
           <span class="text-emerald-400 text-xs flex-shrink-0 flex items-center gap-1">
-            <i class="fa-solid fa-check"></i> Tugadi
+            \${item.stage === 'completed' ? 'Tugadi' : item.stage === 'cancelled' ? 'Bekor qilindi' : 'Xatolik'}
           </span>
         </div>
       \`).join('');
@@ -955,7 +1224,12 @@ export const getDashboardHtml = (): string => {
     }
 
     async function fetchHistory(page = 1) {
+      const request = ++historyRequest;
       historyPage = page;
+      historyItems = [];
+      document.getElementById("historyTableBody").innerHTML = '<tr><td colspan="6">Yuklanmoqda…</td></tr>';
+      document.getElementById("historyPaginationBtns").replaceChildren();
+      document.getElementById("historyPaginationInfo").textContent = "";
       const search = document.getElementById('historySearch').value.trim();
       const platform = document.getElementById('historyPlatform').value;
       const mediaType = document.getElementById('historyMediaType').value;
@@ -993,14 +1267,19 @@ export const getDashboardHtml = (): string => {
       });
 
       if (search) params.append('search', search);
+      if (recipientId) params.set('userId', recipientId);
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
 
       try {
         const res = await authFetch(\`/admin/api/history?\${params.toString()}\`);
         const data = await res.json();
+        if (request !== historyRequest) return;
+        if (!res.ok) throw new Error('History HTTP ' + res.status);
         renderHistoryTable(data.items || [], data.pagination || {});
       } catch (err) {
+        if (request !== historyRequest) return;
+        document.getElementById('historyTableBody').innerHTML = '<tr><td colspan="6">Yuklamalar tarixini olishda xato yuz berdi.</td></tr>';
         console.error('History fetch error', err);
       }
     }
@@ -1018,7 +1297,8 @@ export const getDashboardHtml = (): string => {
         return;
       }
 
-      tbody.innerHTML = items.map(item => {
+      historyItems = items;
+      tbody.innerHTML = items.map((item, index) => {
         const dateStr = new Date(item.createdAt).toLocaleString('uz-UZ', {
           month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
@@ -1027,23 +1307,16 @@ export const getDashboardHtml = (): string => {
                               item.platform === 'instagram' ? 'bg-pink-500/10 text-pink-400 border-pink-500/20' :
                               'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
 
-        const sizeMB = item.size ? (item.size / (1024 * 1024)).toFixed(1) + ' MB' : '-';
+        const sizeMB = item.fileSize ? (item.fileSize / (1024 * 1024)).toFixed(1) + ' MB' : '-';
         const userObj = item.user;
         const userText = userObj ? (userObj.username ? '@' + userObj.username : userObj.firstName || userObj.telegramId) : item.chatId;
-
-        const safeItem = JSON.stringify({
-          _id: item._id,
-          fileName: item.fileName || 'Nomsiz',
-          platform: item.platform,
-          url: item.url,
-        }).replace(/"/g, '&quot;');
 
         return \`
           <tr class="hover:bg-dark-850/50 transition">
             <td class="py-3 px-4 font-mono text-[11px] text-slate-400">\${dateStr}</td>
             <td class="py-3 px-4">
               <span class="font-medium text-white">\${escapeHtml(String(userText))}</span>
-              <div class="text-[10px] text-slate-500 font-mono">ID: \${item.chatId}</div>
+              <div class="text-[10px] text-slate-500 font-mono">ID: \${userObj?.telegramId ?? item.chatId}</div>
             </td>
             <td class="py-3 px-4">
               <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase border \${platformBadge}">
@@ -1053,7 +1326,7 @@ export const getDashboardHtml = (): string => {
             </td>
             <td class="py-3 px-4 max-w-xs">
               <div class="truncate font-medium text-white" title="\${escapeHtml(item.fileName || '')}">\${escapeHtml(item.fileName || 'Fayl')}</div>
-              <a href="\${escapeHtml(item.url)}" target="_blank" class="truncate text-sky-400 hover:underline block text-[11px]">
+              <a href="\${escapeHtml(safeSource(item.url))}" target="_blank" class="truncate text-sky-400 hover:underline block text-[11px]">
                 \${escapeHtml(item.url)}
               </a>
             </td>
@@ -1062,7 +1335,8 @@ export const getDashboardHtml = (): string => {
               <div class="text-slate-500">\${escapeHtml(item.quality || '')}</div>
             </td>
             <td class="py-3 px-4 text-right">
-              <button onclick="openSendModal(\${safeItem})" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 transition flex items-center gap-1 ml-auto" title="Admin Telegram chatiga yuborish">
+              <button onclick="openPreview(\${index})" class="px-2 py-1 text-sky-400">Ko‘rish</button>
+              <button onclick="openSendModal(historyItems[\${index}])" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 transition flex items-center gap-1 ml-auto" title="Admin Telegram chatiga yuborish">
                 <i class="fa-brands fa-telegram"></i>
                 <span class="hidden sm:inline">TG ga olish</span>
               </button>
@@ -1185,13 +1459,14 @@ export const getDashboardHtml = (): string => {
         return;
       }
 
-      tbody.innerHTML = users.map(u => {
+      listedUsers = users;
+      tbody.innerHTML = users.map((u, index) => {
         const createdAt = u.createdAt ? new Date(u.createdAt).toLocaleDateString('uz-UZ') : '-';
         const lastActive = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString('uz-UZ', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
 
         return \`
           <tr class="hover:bg-dark-850/50 transition">
-            <td class="py-3 px-4 font-mono font-medium text-brand-400">\${u.telegramId}</td>
+            <td class="py-3 px-4 font-mono font-medium text-brand-400">\${u.telegramId}<button onclick="showRecipient(\${index})" class="block text-xs text-sky-400">Materiallari</button><button onclick="openRequests(\${index})" class="block text-xs text-sky-400">So‘rovlar</button></td>
             <td class="py-3 px-4">
               <div class="font-medium text-white">\${escapeHtml(u.firstName || 'Ismsiz')} \${escapeHtml(u.lastName || '')}</div>
               <div class="text-[11px] text-slate-400">\${u.username ? '@' + escapeHtml(u.username) : '-'}</div>

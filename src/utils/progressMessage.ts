@@ -90,6 +90,10 @@ export class ProgressMessage {
   /**
    * Progress callback, throttled; safe to call on every yt-dlp line
    */
+  showQueue = (waiting: boolean): void => {
+    if (!this.finished) this.edit(waiting ? "Yuklash navbatda. Joy bo‘shashi bilan boshlanadi." : this.title, true);
+  };
+
   update = (progress: IDownloadProgress): void => {
     if (this.finished) return;
 

@@ -1,3 +1,4 @@
+import { deliveryInfo } from "@/utils/requestHistory";
 import mongoose, { Model, QueryFilter } from "mongoose";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { IDownload } from "@/interfaces/IDownload";
@@ -8,6 +9,7 @@ import Forward from "@/models/Forward";
 import { InlineKeyboardMarkup, ReplyParameters } from "telegraf/types";
 import { EMediaType } from "@/enums/EMediaType";
 import { buildCaption } from "@/utils/caption";
+import { AlbumDeliveryError } from "@/utils/errors";
 
 interface ISendExtra {
   caption?: string;
@@ -56,6 +58,7 @@ export const findAndSendMedia = async <T extends IDownload>(
   model: Model<T>,
   findParams: FindParams<T>,
   options?: {
+    preferFileId?: boolean;
     useCopy?: boolean; // Use copyMessage instead of forwardMessage (default: true)
     caption?: string; // Optional caption for copied messages
     fromChatId?: number; // Override the from chat ID (default: download.chatId)
@@ -64,6 +67,7 @@ export const findAndSendMedia = async <T extends IDownload>(
     replyToMessageId?: number;
   }
 ): Promise<unknown> => {
+  let sendingSharedFile = false;
   try {
     // Process findParams: if mediaType is an array, convert to $in operator
     let processedParams: FindParams<T> = findParams;
@@ -82,7 +86,7 @@ export const findAndSendMedia = async <T extends IDownload>(
 
     // Find the newest download record (shared across all users)
     const download = await model
-      .findOne(processedParams)
+      .findOne({ ...processedParams, cacheIncomplete: { $ne: true } })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -90,6 +94,7 @@ export const findAndSendMedia = async <T extends IDownload>(
       return null;
     }
 
+    deliveryInfo({ mode: "cached" });
     const chatId = ctx.chat?.id;
     if (!chatId) {
       logger.error("Chat ID not available in context");
@@ -154,7 +159,10 @@ export const findAndSendMedia = async <T extends IDownload>(
           chatId,
           download.chatId,
           messageIds.slice(i, i + 100)
-        );
+        ).catch(error => {
+          if (copiedMessages.length) throw new AlbumDeliveryError(copiedMessages.length, messageIds.length);
+          throw error;
+        });
         copiedMessages.push(...results.map((r) => r.message_id));
       }
 
@@ -190,6 +198,12 @@ export const findAndSendMedia = async <T extends IDownload>(
         }
       }
 
+      if (copiedMessages.length < messageIds.length) {
+        await model.updateOne({ _id: download._id }, { $set: { cacheIncomplete: true } })
+          .catch(error => logger.warning("Could not mark incomplete cached album", { error, downloadId: download._id }));
+        if (!copiedMessages.length) return null;
+        throw new AlbumDeliveryError(copiedMessages.length, messageIds.length);
+      }
       logger.info("Carousel copied successfully", {
         downloadId: download._id,
         itemCount: copiedMessages.length,
@@ -212,6 +226,13 @@ export const findAndSendMedia = async <T extends IDownload>(
               }
             : undefined,
         };
+
+        if (options?.preferFileId && download.fileId) {
+          sendingSharedFile = true;
+          const sent = await sendByFileId(ctx, download, { ...extra, caption: options.caption ?? buildCaption(ctx, download.fileName) });
+          await saveForwardRecord(sent.message_id);
+          return sent;
+        }
 
         let result: { message_id: number };
         try {
@@ -267,6 +288,7 @@ export const findAndSendMedia = async <T extends IDownload>(
       findParams,
       userId: ctx.from?.id,
     });
+    if (sendingSharedFile || error instanceof AlbumDeliveryError) throw error;
     return null;
   }
 };

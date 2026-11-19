@@ -1,9 +1,12 @@
+import { deliveryConfirmed, deliveryStage } from "./deliveryAttempt";
+import { processWaitObservers } from "./processManager";
 import { EventEmitter } from "events";
 import { EPlatform } from "@/enums/EPlatform";
 import { EMediaType } from "@/enums/EMediaType";
 import logger from "@/config/logger";
 
 export type TaskStage =
+  | "queued"
   | "analyzing"
   | "downloading"
   | "splitting"
@@ -32,6 +35,8 @@ export interface IActiveTask {
   quality?: string;
   stage: TaskStage;
   progress: ITaskProgress;
+  stageSince: number;
+  timings: Partial<Record<TaskStage, number>>;
   startedAt: Date;
   updatedAt: Date;
   error?: string;
@@ -48,6 +53,14 @@ export interface IStartTaskOptions {
   title?: string;
   quality?: string;
   signal?: AbortSignal;
+  onWait?: (waiting: boolean) => void;
+}
+
+function recordStage(task: IActiveTask, next: TaskStage): void {
+  const now = Date.now();
+  task.timings[task.stage] = (task.timings[task.stage] ?? 0) + now - task.stageSince;
+  task.stageSince = now;
+  task.stage = next;
 }
 
 export class TaskController {
@@ -88,7 +101,10 @@ export class TaskController {
   }
 
   updateStage(stage: TaskStage): void {
-    this.task.stage = stage;
+    if (stage === "uploading") deliveryStage("telegram");
+    if (stage === "splitting") deliveryStage("processing");
+    if (stage === "downloading") deliveryStage("source");
+    recordStage(this.task, stage);
     this.task.updatedAt = new Date();
     this.manager.notifyUpdate(this.task);
   }
@@ -106,15 +122,19 @@ export class TaskController {
   }
 
   complete(): void {
-    this.task.stage = "completed";
+    deliveryConfirmed();
     this.task.progress.percent = 100;
     this.task.updatedAt = new Date();
     this.manager.removeTask(this.task.id, "completed");
   }
 
   fail(error: unknown): void {
+    if (!this.manager.getTask(this.id)) return;
+    if (this.signal.aborted) {
+      this.manager.removeTask(this.id, "cancelled");
+      return;
+    }
     const errorMsg = error instanceof Error ? error.message : String(error);
-    this.task.stage = "failed";
     this.task.error = errorMsg;
     this.task.updatedAt = new Date();
     this.manager.removeTask(this.task.id, "failed", errorMsg);
@@ -122,7 +142,6 @@ export class TaskController {
 
   cancel(): void {
     this.abortController.abort();
-    this.task.stage = "cancelled";
     this.task.updatedAt = new Date();
     this.manager.removeTask(this.task.id, "cancelled");
   }
@@ -136,14 +155,16 @@ class ActiveTaskManager extends EventEmitter {
   constructor() {
     super();
     // Check for stuck tasks periodically
-    setInterval(() => this.checkStuckTasks(), 30000);
+    setInterval(() => this.checkStuckTasks(), 30000).unref();
   }
 
   startTask(options: IStartTaskOptions): TaskController {
     const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const abortController = new AbortController();
 
-    if (options.signal) {
+    if (options.signal?.aborted) {
+      abortController.abort();
+    } else if (options.signal) {
       options.signal.addEventListener("abort", () => {
         abortController.abort();
       }, { once: true });
@@ -161,6 +182,8 @@ class ActiveTaskManager extends EventEmitter {
       quality: options.quality,
       stage: "analyzing",
       progress: {},
+      stageSince: Date.now(),
+      timings: {},
       startedAt: new Date(),
       updatedAt: new Date(),
       isStuck: false,
@@ -170,7 +193,14 @@ class ActiveTaskManager extends EventEmitter {
     this.emit("task:started", task);
     this.emit("change");
 
-    return new TaskController(task, abortController, this);
+    const controller = new TaskController(task, abortController, this);
+    let resumeStage: TaskStage = "downloading";
+    processWaitObservers.set(controller.signal, waiting => {
+      if (waiting) resumeStage = task.stage;
+      controller.updateStage(waiting ? "queued" : resumeStage);
+      options.onWait?.(waiting);
+    });
+    return controller;
   }
 
   notifyUpdate(task: IActiveTask): void {
@@ -184,10 +214,11 @@ class ActiveTaskManager extends EventEmitter {
     if (!entry) return;
 
     const { task } = entry;
-    task.stage = stage;
+    recordStage(task, stage);
     task.updatedAt = new Date();
     if (error) task.error = error;
 
+    processWaitObservers.delete(entry.controller.signal);
     this.tasks.delete(id);
 
     // Keep last 50 in memory for immediate feed

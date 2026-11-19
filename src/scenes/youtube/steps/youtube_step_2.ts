@@ -1,3 +1,6 @@
+import { traceEvent, traceOutcome } from "@/utils/requestHistory";
+import { observeAttempt } from "@/utils/deliveryAttempt";
+import { EPlatform } from "@/enums/EPlatform";
 import { CANCEL_BUTTON_TEXT, MESSAGES } from "@/constants";
 import { EMediaType } from "@/enums/EMediaType";
 import { IMyContext } from "@/interfaces/IMyContext";
@@ -58,7 +61,7 @@ const toMenuOption = (
 export const youtubeStep2 = async (ctx: IMyContext) => {
   if (!ctx.has(callbackQuery("data"))) return ctx.scene.leave();
 
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => {});
   const type = ctx.callbackQuery.data;
 
   if (await handleCancelButton(ctx, type)) return;
@@ -68,20 +71,18 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
 
   const service = new YoutubeService(ctx.wizard.state.youtube.url);
 
-  await ctx.editMessageText(MESSAGES.INFO.ANALYZING);
-  await service.getInfo();
+  const menu = await observeAttempt(ctx, EPlatform.YOUTUBE, "source",
+    () => service.getQualityMenu(() => ctx.editMessageText(MESSAGES.INFO.ANALYZING).catch(() => {})), () => false);
   ctx.wizard.state.youtube.service = service.toState();
   await ctx.deleteMessage();
 
   const isVideo = type === EMediaType.VIDEO;
   const options: IMenuOption[] = isVideo
-    ? service
-        .getVideoOptions()
+    ? menu.video
         .map((o) =>
           toMenuOption("🎥", o, String(o.height), TOO_MANY_PARTS_CALLBACK)
         )
-    : service
-        .getAudioOptions()
+    : menu.audio
         .map((o) =>
           toMenuOption(
             "🎵",
@@ -92,6 +93,7 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
         );
 
   if (!options.some((o) => o.selectable)) {
+    traceOutcome("failed", "Mos sifat topilmadi");
     await service.cleanupFolder();
     await ctx.reply(
       isVideo ? MESSAGES.ERROR.NO_FITTING_QUALITY : MESSAGES.ERROR.NO_FITTING_AUDIO
@@ -109,6 +111,7 @@ export const youtubeStep2 = async (ctx: IMyContext) => {
   if (service.data?.thumbnail) {
     try {
       await ctx.replyWithPhoto(service.data.thumbnail, { caption, ...keyboard });
+      traceEvent("reply", caption);
     } catch {
       await ctx.reply(caption, keyboard);
     }

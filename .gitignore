@@ -5,7 +5,9 @@ node_modules/
 dist/
 build/
 
-downloads/  
+downloads/
+instagram_cookies.txt
+*.cookies.txt
 # Environment variables
 .env
 .env.local

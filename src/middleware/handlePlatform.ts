@@ -48,16 +48,19 @@ export const handlePlatform = async (ctx: IMyContext) => {
     case EPlatform.YOUTUBE:
       await ctx.scene.enter(YOUTUBE_SCENE_NAME, {
         youtube: { url: sanitizedUrl },
+        requestId: ctx.update.update_id,
       });
       break;
     case EPlatform.INSTAGRAM:
       await ctx.scene.enter(INSTAGRAM_SCENE_NAME, {
         instagram: { url: sanitizedUrl },
+        requestId: ctx.update.update_id,
       });
       break;
     case EPlatform.TIKTOK:
       await ctx.scene.enter(TIKTOK_SCENE_NAME, {
         tiktok: { url: sanitizedUrl },
+        requestId: ctx.update.update_id,
       });
       break;
     default:

@@ -1,3 +1,4 @@
+import { traceOutcome } from "@/utils/requestHistory";
 import { Middleware } from "telegraf";
 import { IMyContext } from "@/interfaces/IMyContext";
 import logger from "@/config/logger";
@@ -135,6 +136,7 @@ export const rateLimiterMiddleware: Middleware<IMyContext> = async (
 
   // Check rate limit
   if (rateLimiter.isRateLimited(userId)) {
+    traceOutcome("rate_limit");
     const resetTime = rateLimiter.getResetTime(userId);
     const resetIn = resetTime
       ? Math.max(1, Math.ceil(myDayjs(resetTime).diff(myDayjs(), "seconds", true)))

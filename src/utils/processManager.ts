@@ -24,7 +24,9 @@ export class ProcessCancelledError extends UserError {
 /**
  * Limits how many external processes run at once
  */
-class Semaphore {
+export const processWaitObservers = new WeakMap<AbortSignal, (waiting: boolean) => void>();
+
+export class Semaphore {
   private active = 0;
   private waiting: Array<() => void> = [];
 
@@ -32,6 +34,8 @@ class Semaphore {
 
   async acquire(signal?: AbortSignal): Promise<() => void> {
     if (this.active >= this.limit) {
+      const observe = signal && processWaitObservers.get(signal);
+      observe?.(true);
       await new Promise<void>((resolve, reject) => {
         const onAbort = () => {
           this.waiting = this.waiting.filter((w) => w !== wake);
@@ -44,15 +48,18 @@ class Semaphore {
         this.waiting.push(wake);
         signal?.addEventListener("abort", onAbort, { once: true });
       });
+      observe?.(false);
+    } else {
+      this.active++;
     }
-    this.active++;
 
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      this.active--;
-      this.waiting.shift()?.();
+      const wake = this.waiting.shift();
+      if (wake) wake();
+      else this.active--;
     };
   }
 }

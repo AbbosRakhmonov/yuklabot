@@ -4,6 +4,7 @@ import { IMyContext } from "@/interfaces/IMyContext";
 import { ICarouselItem } from "@/interfaces/IInstagramDownload";
 import { withNetworkRetry } from "@/helpers/withNetworkRetry";
 import { destroyInput } from "@/utils/cdnInput";
+import { AlbumDeliveryError } from "@/utils/errors";
 import {
   InputFile,
   InputMediaPhoto,
@@ -114,15 +115,21 @@ export const sendAlbum = async (
   ctx: IMyContext,
   items: IAlbumItem[],
   caption?: string,
+  expectedCount = items.length,
 ): Promise<ICarouselItem[]> => {
   const sent: ICarouselItem[] = [];
 
   for (let start = 0; start < items.length; start += MAX_GROUP_SIZE) {
     const chunk = items.slice(start, start + MAX_GROUP_SIZE);
-    const chunkCaption = start === 0 ? caption : undefined;
+    const chunkCaption = sent.length === 0 ? caption : undefined;
 
     if (chunk.length === 1) {
-      sent.push(await sendSingle(ctx, chunk[0], chunkCaption));
+      try {
+        sent.push(await sendSingle(ctx, chunk[0], chunkCaption));
+      } catch (error) {
+        if (!sent.length) throw error;
+        throw new AlbumDeliveryError(sent.length, expectedCount);
+      }
       continue;
     }
 
@@ -148,9 +155,9 @@ export const sendAlbum = async (
         error: error instanceof Error ? error.message : String(error),
         userId: ctx.from?.id,
       });
-      for (const [i, item] of chunk.entries()) {
+      for (const item of chunk) {
         try {
-          sent.push(await sendSingle(ctx, item, i === 0 ? chunkCaption : undefined));
+          sent.push(await sendSingle(ctx, item, sent.length === 0 ? caption : undefined));
         } catch (itemError) {
           logger.error("Error sending album item", {
             error: itemError,
@@ -162,5 +169,6 @@ export const sendAlbum = async (
     }
   }
 
+  if (sent.length < expectedCount) throw new AlbumDeliveryError(sent.length, expectedCount);
   return sent;
 };

@@ -3,6 +3,7 @@ import { youtubeScene } from "./youtube";
 import { instagramScene } from "./instagram";
 import { tiktokScene } from "./tiktok";
 import { getUserErrorMessage } from "@/utils/errors";
+import { traceOutcome } from "@/utils/requestHistory";
 import logger from "@/config/logger";
 import { stopContinuousAction } from "@/utils/continuousAction";
 import { IMyContext } from "@/interfaces/IMyContext";
@@ -21,6 +22,7 @@ stage.use(async (ctx: IMyContext, next) => {
     }
   } catch (error) {
     // Stop any chat action left running by the failed step
+    traceOutcome("failed");
     stopContinuousAction(ctx);
     await ctx.scene.leave();
 

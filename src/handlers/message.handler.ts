@@ -1,3 +1,4 @@
+import { traceOutcome } from "@/utils/requestHistory";
 import logger from "../config/logger";
 import { startContinuousAction } from "../utils/continuousAction";
 import { getUserErrorMessage, UserError } from "@/utils/errors";
@@ -20,6 +21,7 @@ export const handleTextMessage = async (ctx: IMyContext): Promise<void> => {
 
     await handlePlatform(ctx);
   } catch (error) {
+    traceOutcome("failed");
     logger.error("Error handling text message", {
       error,
       userId: ctx.from?.id,

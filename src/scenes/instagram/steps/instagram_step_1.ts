@@ -1,3 +1,4 @@
+import { observeAttempt } from "@/utils/deliveryAttempt";
 // src/scenes/instagram/steps/instagram_step_1.ts
 import { MESSAGES } from "@/constants";
 import { EMediaType } from "@/enums/EMediaType";
@@ -11,16 +12,17 @@ import { instagramStep6 } from "@/scenes/instagram/steps/instagram_step_6";
 import { InstagramService } from "@/services";
 import { sendAudioVideoButtons } from "@/utils/sendAudioVideoButtons";
 import { getUserErrorMessage } from "@/utils/errors";
+import { traceOutcome } from "@/utils/requestHistory";
 import logger from "@/config/logger";
 
 export const instagramStep1 = async (ctx: IMyContext) => {
   const url = ctx.wizard.state.instagram.url;
 
-  const result = await findAndSendMedia(ctx, InstagramDownload, {
+  const result = await observeAttempt(ctx, EPlatform.INSTAGRAM, "telegram", () => findAndSendMedia(ctx, InstagramDownload, {
     url,
     platform: EPlatform.INSTAGRAM,
     mediaType: [EMediaType.POST, EMediaType.IMAGE], // Array for OR operation
-  });
+  }), Boolean);
 
   if (result) return ctx.scene.leave();
 
@@ -30,7 +32,7 @@ export const instagramStep1 = async (ctx: IMyContext) => {
     const service = new InstagramService(url);
     ctx.wizard.state.instagram.service = service;
 
-    ctx.wizard.state.instagram.data = await service.getInfo();
+    ctx.wizard.state.instagram.data = await observeAttempt(ctx, EPlatform.INSTAGRAM, "source", () => service.getInfo(), () => false);
 
     await ctx.deleteMessage(message.message_id);
 
@@ -56,6 +58,7 @@ export const instagramStep1 = async (ctx: IMyContext) => {
     }
   } catch (error) {
     await ctx.deleteMessage(message.message_id).catch(() => {});
+    traceOutcome("failed");
     logger.error("Error getting Instagram info", {
       error,
       url,

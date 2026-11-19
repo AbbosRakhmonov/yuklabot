@@ -1,3 +1,5 @@
+import { rememberVideo, sharedDownload } from "@/helpers/sharedDownload";
+import { deliveryStage, observeAttempt } from "@/utils/deliveryAttempt";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { callbackQuery } from "telegraf/filters";
 import { startContinuousAction } from "@/utils/continuousAction";
@@ -18,15 +20,17 @@ import { activeTasks } from "@/utils/activeTasks";
  */
 export const sendInstagramVideo = async (ctx: IMyContext) => {
   const service = ctx.wizard.state.instagram.service;
-  const data = ctx.wizard.state.instagram.data;
+  await observeAttempt(ctx, EPlatform.INSTAGRAM, "source", () => sharedDownload(ctx,
+    [EPlatform.INSTAGRAM, service.url, EMediaType.VIDEO],
+    preferFileId => findAndSendMedia(ctx, InstagramDownload, {
+      url: service.url, platform: EPlatform.INSTAGRAM, mediaType: EMediaType.VIDEO,
+    }, { preferFileId }),
+    () => uploadInstagramVideo(ctx),
+  ));
+};
 
-  const result = await findAndSendMedia(ctx, InstagramDownload, {
-    url: service.url,
-    platform: EPlatform.INSTAGRAM,
-    mediaType: EMediaType.VIDEO,
-  });
-  if (result) return;
-
+async function uploadInstagramVideo(ctx: IMyContext) {
+  const { service, data } = ctx.wizard.state.instagram;
   const monitorTask = activeTasks.startTask({
     userId: ctx.from?.id ?? 0,
     username: ctx.from?.username,
@@ -43,6 +47,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
     monitorTask.updateStage("uploading");
     const thumbnailUrl = data.thumbnail || data.image_url;
     const sentMessage = await withNetworkRetry(async () => {
+      deliveryStage("source");
       const video = await openCdnStream(
         data.video_url as string,
         service.proxyId,
@@ -55,6 +60,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
           )
         : undefined;
       try {
+        deliveryStage("telegram");
         return await ctx.replyWithVideo(video, {
           thumbnail,
           width: data.width,
@@ -68,6 +74,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
       }
     });
 
+    rememberVideo(sentMessage);
     stopVideoAction();
     monitorTask.complete();
 
@@ -89,7 +96,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
     stopVideoAction();
     throw error;
   }
-};
+}
 
 /**
  * "Video" button pressed

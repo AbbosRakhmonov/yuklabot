@@ -1,3 +1,4 @@
+import { traceOutcome } from "@/utils/requestHistory";
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { CANCEL_BUTTON_CALLBACK } from "@/scenes/youtube/constants";
@@ -20,6 +21,7 @@ export const handleCancelButton = async (
     await ctx.reply(MESSAGES.INFO.SCENE_CANCELLED);
   }
 
+  traceOutcome("cancelled");
   await ctx.scene.leave();
   return true;
 };

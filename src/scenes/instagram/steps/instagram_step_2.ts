@@ -7,7 +7,7 @@ import { instagramStep4 } from "@/scenes/instagram/steps/instagram_step_4";
 
 export const instagramStep2 = async (ctx: IMyContext) => {
   if (ctx.has(callbackQuery("data"))) {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     const type = ctx.callbackQuery.data;
 
     // Check if cancel button was clicked

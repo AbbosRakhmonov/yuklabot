@@ -1,3 +1,5 @@
+import { sharedDownload } from "@/helpers/sharedDownload";
+import { observeAttempt } from "@/utils/deliveryAttempt";
 import { MAX_FILE_SIZE_LABEL, MESSAGES } from "@/constants";
 import { callbackQuery } from "telegraf/filters";
 import path from "path";
@@ -54,7 +56,7 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
     return;
   }
 
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => {});
 
   // Restore the service from the scene state (it holds the info JSON folder)
   const service = YoutubeService.fromState(ctx.wizard.state.youtube.service);
@@ -65,24 +67,17 @@ export const youtubeStep3 = async (ctx: IMyContext) => {
 
     await ctx.deleteMessage();
 
-    if (choice.startsWith(AUDIO_OPTION_PREFIX)) {
-      const formatId = choice.slice(AUDIO_OPTION_PREFIX.length);
-      const cached = await findAndSendMedia(ctx, YoutubeDownload, {
-        url: service.url,
-        platform: EPlatform.YOUTUBE,
-        mediaType: EMediaType.AUDIO,
-        formatId,
-      });
-      if (!cached) await downloadAndSendAudio(ctx, service, formatId);
-    } else {
-      const cached = await findAndSendMedia(ctx, YoutubeDownload, {
-        url: service.url,
-        platform: EPlatform.YOUTUBE,
-        height: Number(choice),
-        mediaType: EMediaType.VIDEO,
-      });
-      if (!cached) await downloadAndSendVideo(ctx, service, choice);
-    }
+    const audio = choice.startsWith(AUDIO_OPTION_PREFIX);
+    const quality = audio ? choice.slice(AUDIO_OPTION_PREFIX.length) : choice;
+    const mediaType = audio ? EMediaType.AUDIO : EMediaType.VIDEO;
+    await observeAttempt(ctx, EPlatform.YOUTUBE, "source", () => sharedDownload(ctx,
+      [EPlatform.YOUTUBE, service.data?.id || service.url, mediaType, quality],
+      preferFileId => findAndSendMedia(ctx, YoutubeDownload, {
+        url: service.url, platform: EPlatform.YOUTUBE, mediaType,
+        ...(audio ? { formatId: quality } : { height: Number(quality) }),
+      }, { preferFileId }),
+      () => audio ? downloadAndSendAudio(ctx, service, quality) : downloadAndSendVideo(ctx, service, quality),
+    ));
 
     return ctx.scene.leave();
   } finally {
@@ -111,6 +106,7 @@ async function downloadAndSendVideo(
     title: service.data?.title,
     quality: `${height}p`,
     signal: progress.signal,
+    onWait: progress.showQueue,
   });
 
   let stopVideoAction: (() => void) | null = null;
@@ -188,6 +184,7 @@ async function downloadAndSendAudio(
     title: service.data?.title,
     quality: formatId,
     signal: progress.signal,
+    onWait: progress.showQueue,
   });
 
   let stopAudioAction: (() => void) | null = null;

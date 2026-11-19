@@ -66,6 +66,17 @@ export interface IDownloadOptions {
   signal?: AbortSignal;
 }
 
+interface QualityMenu {
+  data: IYoutubeData;
+  video: IVideoOption[];
+  audio: IAudioOption[];
+}
+
+const menus = new Map<string, { menu: QualityMenu; expires: number }>();
+const pendingMenus = new Map<string, Promise<QualityMenu>>();
+const menuLifetimeMs = 5 * 60 * 1000;
+const maxMenus = 200;
+
 const formatSize = (f: IYoutubeFormat): number | undefined => {
   if (f.filesize != null) return f.filesize;
   if (f.filesize_approx != null) {
@@ -108,6 +119,43 @@ export class YoutubeService {
     service.folderName = state.folderName;
     service.proxyId = state.proxyId ?? null;
     return service;
+  }
+
+  async getQualityMenu(onLookup: () => Promise<unknown>): Promise<QualityMenu> {
+    const cached = menus.get(this.url);
+    if (cached && cached.expires > Date.now()) {
+      this.data = cached.menu.data;
+      return cached.menu;
+    }
+    menus.delete(this.url);
+    const pending = pendingMenus.get(this.url);
+    if (pending) {
+      const menu = await pending;
+      this.data = menu.data;
+      return menu;
+    }
+
+    // Only the original requester owns info.json. Other downloads use their own folder.
+    const lookup = (async () => {
+      await onLookup();
+      await this.getInfo();
+      const menu = {
+        data: this.toState().data!,
+        video: this.getVideoOptions(),
+        audio: this.getAudioOptions(),
+      };
+      if (menu.video.length || menu.audio.length) {
+        if (menus.size >= maxMenus) menus.delete(menus.keys().next().value!);
+        menus.set(this.url, { menu, expires: Date.now() + menuLifetimeMs });
+      }
+      return menu;
+    })();
+    pendingMenus.set(this.url, lookup);
+    try {
+      return await lookup;
+    } finally {
+      pendingMenus.delete(this.url);
+    }
   }
 
   /**

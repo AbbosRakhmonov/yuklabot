@@ -1,6 +1,7 @@
 import "./config/env";
 import "./config/patches";
 
+import { traceRequest } from "./utils/requestHistory";
 import { session } from "telegraf";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { createBot } from "./config/bot";
@@ -9,7 +10,7 @@ import logger from "./config/logger";
 import { loggerMiddleware } from "./middleware/logger";
 import { userActivityMiddleware } from "./middleware/userActivity";
 import { rateLimiter, rateLimiterMiddleware } from "./middleware/rateLimiter";
-import { createWebhookServer, createApp, deleteWebhook } from "./config/webhook";
+import { createWebhookServer, createApp } from "./config/webhook";
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
 import { adminCommand } from "./commands/admin.command";
@@ -24,13 +25,12 @@ import { stage } from "./scenes";
 import { cleanupService } from "./services/cleanup.service";
 import { userActivityCache } from "./utils/userActivityCache";
 import { continuousAction } from "./utils/continuousAction";
-import { createBackgroundQueueMiddleware } from "./middleware/backgroundQueue";
+import { UpdateQueue } from "./middleware/backgroundQueue";
 import { getUserErrorMessage } from "./utils/errors";
 import { killAllProcesses } from "./utils/processManager";
 import { IMyContext } from "./interfaces/IMyContext";
 
-// Store bot instance for graceful shutdown
-let botInstance: ReturnType<typeof createBot> | null = null;
+let queue: UpdateQueue | undefined;
 
 // Graceful shutdown function
 const gracefulShutdown = async (): Promise<void> => {
@@ -38,6 +38,7 @@ const gracefulShutdown = async (): Promise<void> => {
 
   try {
     // Stop running downloads, they'd outlive the bot otherwise
+    queue?.stop();
     killAllProcesses();
 
     // Stop cleanup service
@@ -50,15 +51,6 @@ const gracefulShutdown = async (): Promise<void> => {
     userActivityCache.stopCleanup();
     await userActivityCache.flushPending().catch(() => {});
     rateLimiter.stopCleanup();
-
-    // Stop bot if it exists
-    if (botInstance) {
-      if (config.webhook.enabled) {
-        await deleteWebhook(botInstance);
-      } else {
-        botInstance.stop("SIGTERM");
-      }
-    }
 
     // Disconnect database
     await disconnectDatabase();
@@ -120,16 +112,16 @@ async function main(): Promise<void> {
 
     // Create bot instance
     const bot = createBot();
-    botInstance = bot; // Store for graceful shutdown
+    bot.botInfo = await bot.telegram.getMe();
+    queue = new UpdateQueue(bot);
 
     // Middleware (order matters!)
     // ❌ under a progress message: must run before the per-user queue,
     // which is busy with the very download it stops
     bot.action(CANCEL_DOWNLOAD_REGEX, handleCancelDownload);
 
-    // Run every update in the background, one at a time per user
-    bot.use(createBackgroundQueueMiddleware(handleBotError));
     bot.use(session({ store }));
+    bot.use(traceRequest);
 
     // Commands
     bot.command("start", startCommand);
@@ -149,6 +141,7 @@ async function main(): Promise<void> {
 
     // Error handling
     bot.catch(handleBotError);
+    await queue.start();
 
     // Graceful shutdown handler for signals
     const shutdown = async (signal: string): Promise<void> => {
@@ -168,11 +161,7 @@ async function main(): Promise<void> {
         throw new Error("WEBHOOK_URL is required when WEBHOOK_ENABLED is true");
       }
 
-      // Populate botInfo in webhook mode so ctx.botInfo is available for captions
-      bot.botInfo = await bot.telegram.getMe();
-
-      // Create Express server with bot.createWebhook()
-      const app = await createWebhookServer(bot, config.webhook.url);
+      const app = await createWebhookServer(bot, config.webhook.url, queue);
 
       // Start server
       app.listen(config.webhook.port, "0.0.0.0", () => {
@@ -198,11 +187,7 @@ async function main(): Promise<void> {
         );
       });
 
-      // Launch bot with polling
-      await bot.launch({
-        dropPendingUpdates: true,
-      });
-      logger.info("✅ Bot is running with polling...");
+      await queue.poll();
     }
   } catch (error) {
     logger.error("Failed to start bot", { error });

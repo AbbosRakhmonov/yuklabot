@@ -4,6 +4,7 @@
   "main": "dist/index.js",
   "license": "MIT",
   "scripts": {
+    "test": "node --require ts-node/register/transpile-only --test tests/*.test.cjs",
     "build": "tsc && tsc-alias",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",

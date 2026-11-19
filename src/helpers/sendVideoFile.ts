@@ -1,3 +1,4 @@
+import { rememberVideo } from "./sharedDownload";
 import { MESSAGES } from "@/constants";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { ICarouselItem } from "@/interfaces/IInstagramDownload";
@@ -67,8 +68,7 @@ export const sendVideoFile = async (
             .join("\n\n")
         : options.caption;
 
-    messages.push(
-      await ctx.replyWithVideo(toUploadInput(part.path), {
+    const message = await ctx.replyWithVideo(toUploadInput(part.path), {
         caption,
         width: options.width,
         height: options.height,
@@ -76,8 +76,9 @@ export const sendVideoFile = async (
         thumbnail: options.thumbnail?.(),
         supports_streaming: true,
         reply_markup: i === 0 ? options.replyMarkup : undefined,
-      }),
-    );
+      });
+    rememberVideo(message, i === 0 ? options.replyMarkup : undefined);
+    messages.push(message);
   }
 
   return {
