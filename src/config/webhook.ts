@@ -7,63 +7,57 @@ import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
 import fs from "fs/promises";
 import os from "os";
+import { createAdminRouter } from "@/dashboard/adminRouter";
 
-export const createWebhookServer = async (
-  bot: Telegraf<IMyContext>,
-  webhookDomain: string
-): Promise<Express> => {
-  // Validate webhook secret token in production
-  if (process.env.NODE_ENV === "production" && !config.webhook.secretToken) {
-    throw new Error(
-      "WEBHOOK_SECRET_TOKEN is required in production when webhook is enabled"
-    );
-  }
-
+export const createApp = (bot: Telegraf<IMyContext>): Express => {
   const app = express();
 
   // Trust proxy to correctly identify client IP when behind reverse proxy/load balancer
-  // Default to 1 (trust only first proxy) - most secure for single reverse proxy
-  // Set via TRUST_PROXY env var: number (e.g., "1", "2") or "false" to disable
-  // Note: Setting to "true" is insecure and will cause express-rate-limit to error
   const trustProxy = process.env.TRUST_PROXY;
   if (trustProxy === "false") {
     app.set("trust proxy", false);
   } else if (trustProxy) {
-    // Parse as number (e.g., "1" for single proxy, "2" for two proxies, etc.)
     const proxyCount = parseInt(trustProxy, 10);
     if (!isNaN(proxyCount) && proxyCount >= 0) {
       app.set("trust proxy", proxyCount);
     } else {
-      // Invalid value, default to 1
       logger.warning(
         `Invalid TRUST_PROXY value "${trustProxy}", defaulting to 1. Use a number (e.g., "1") or "false".`
       );
       app.set("trust proxy", 1);
     }
   } else {
-    // Default to 1 (most common and secure for single reverse proxy)
     app.set("trust proxy", 1);
   }
 
-  // Get webhook path
+  // Webhook path
   const webhookPath =
     config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
 
-  // Middleware to parse JSON (if needed for other routes)
+  // Middleware to parse JSON
   app.use(
     express.json({
       limit: "1mb",
     })
   );
-  // All updates come from a few Telegram IPs, so the webhook itself must not
-  // be rate limited (it is protected by the secret token instead)
+
+  // Rate limiter (Telegram updates and admin dashboard endpoints skip rate limiting)
   app.use(
     rateLimit({
       windowMs: 60000, // 1 minute
-      max: 100, // limit each IP to 100 requests per windowMs
-      skip: (req: Request) => req.path === webhookPath,
+      max: 120, // limit each IP to 120 requests per windowMs
+      skip: (req: Request) =>
+        req.path === webhookPath || req.path.startsWith("/admin"),
     })
   );
+
+  // Mount Admin Dashboard Router
+  app.use("/admin", createAdminRouter(bot));
+
+  // Redirect root to /admin
+  app.get("/", (_req, res) => {
+    res.redirect("/admin");
+  });
 
   // Health check endpoint
   app.get("/health", async (_req, res) => {
@@ -99,7 +93,7 @@ export const createWebhookServer = async (
       health.status = "degraded";
     }
 
-    // Check free space on the download directory's filesystem
+    // Check free space on download directory
     try {
       const stats = await fs
         .statfs(config.downloadDir)
@@ -112,12 +106,10 @@ export const createWebhookServer = async (
         total: `${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`,
         percentFree: parseFloat(percentFree),
       };
-      // Mark as degraded if free disk space is below 10%
       if (parseFloat(percentFree) < 10) {
         health.status = "degraded";
       }
     } catch (error) {
-      // Disk space check failed, but don't fail health check
       logger.debug("Failed to check disk space", { error });
     }
 
@@ -132,7 +124,7 @@ export const createWebhookServer = async (
       percentUsed: parseFloat(percentUsed),
     };
 
-    // Check active downloads (count folders in download directory)
+    // Check active downloads folder count
     try {
       const downloadDir = config.downloadDir;
       try {
@@ -144,13 +136,30 @@ export const createWebhookServer = async (
       }
     } catch (error) {
       logger.debug("Failed to check active downloads", { error });
-      // Ignore errors
     }
 
-    // Return 503 if critical services are down
     const statusCode = health.status === "ok" ? 200 : 503;
     res.status(statusCode).json(health);
   });
+
+  return app;
+};
+
+export const createWebhookServer = async (
+  bot: Telegraf<IMyContext>,
+  webhookDomain: string
+): Promise<Express> => {
+  // Validate webhook secret token in production
+  if (process.env.NODE_ENV === "production" && !config.webhook.secretToken) {
+    throw new Error(
+      "WEBHOOK_SECRET_TOKEN is required in production when webhook is enabled"
+    );
+  }
+
+  const app = createApp(bot);
+
+  const webhookPath =
+    config.webhook.path || `/webhook/${process.env.BOT_TOKEN?.split(":")[0]}`;
 
   logger.info(`Webhook path: ${webhookPath}`);
 
@@ -164,8 +173,7 @@ export const createWebhookServer = async (
     }),
   };
 
-  // Use bot.createWebhook() - this returns Express middleware
-  // and automatically sets the webhook with Telegram
+  // Register Telegram webhook middleware
   app.use(await bot.createWebhook(webhookOptions));
 
   logger.info(

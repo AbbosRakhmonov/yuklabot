@@ -19,6 +19,7 @@ export interface ISendVideoOptions {
   duration?: number; // seconds
   thumbnail?: () => InputFile; // factory: each part needs a fresh stream
   replyMarkup?: InlineKeyboardMarkup; // under the (first) video
+  onStageChange?: (stage: "splitting" | "uploading") => void;
 }
 
 export interface ISentVideo {
@@ -40,6 +41,7 @@ export const sendVideoFile = async (
 ): Promise<ISentVideo> => {
   const { size } = await fs.stat(filePath);
   if (getPartCount(size) > 1) {
+    options.onStageChange?.("splitting");
     await progress.setText(MESSAGES.INFO.SPLITTING);
   }
 
@@ -51,6 +53,7 @@ export const sendVideoFile = async (
 
   const messages = [];
   for (const [i, part] of parts.entries()) {
+    options.onStageChange?.("uploading");
     await progress.setText(
       total > 1
         ? MESSAGES.INFO.UPLOADING_PART(i + 1, total)

@@ -9,9 +9,10 @@ import logger from "./config/logger";
 import { loggerMiddleware } from "./middleware/logger";
 import { userActivityMiddleware } from "./middleware/userActivity";
 import { rateLimiter, rateLimiterMiddleware } from "./middleware/rateLimiter";
-import { createWebhookServer, deleteWebhook } from "./config/webhook";
+import { createWebhookServer, createApp, deleteWebhook } from "./config/webhook";
 import { config } from "./config/config";
 import { helpCommand } from "./commands/help.command";
+import { adminCommand } from "./commands/admin.command";
 import { handleTextMessage } from "./handlers/message.handler";
 import { handleTiktokAudioButton } from "./handlers/tiktokAudio.handler";
 import { TIKTOK_AUDIO_CALLBACK_REGEX } from "./scenes/tiktok/constants";
@@ -133,6 +134,7 @@ async function main(): Promise<void> {
     // Commands
     bot.command("start", startCommand);
     bot.command("help", helpCommand);
+    bot.command("admin", adminCommand);
 
     bot.use(rateLimiterMiddleware);
     bot.use(userActivityMiddleware);
@@ -185,6 +187,17 @@ async function main(): Promise<void> {
         );
       });
     } else {
+      // Start Express dashboard & health server in polling mode
+      const app = createApp(bot);
+      app.listen(config.serverPort, "0.0.0.0", () => {
+        logger.info(
+          `✅ Dashboard & Health server is running on port ${config.serverPort}`
+        );
+        logger.info(
+          `✅ Dashboard URL: http://localhost:${config.serverPort}/admin`
+        );
+      });
+
       // Launch bot with polling
       await bot.launch({
         dropPendingUpdates: true,

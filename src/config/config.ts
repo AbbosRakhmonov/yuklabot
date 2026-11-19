@@ -100,4 +100,11 @@ export const config = {
     1,
     parseInt(process.env.MAX_CONCURRENT_INFO_PROCESSES || "5", 10) || 5,
   ),
+  admin: {
+    username: process.env.ADMIN_USERNAME || "admin",
+    password: process.env.ADMIN_PASSWORD || "admin123",
+    chatId: parseInt(process.env.ADMIN_CHAT_ID || "0", 10) || 0,
+    sessionSecret: process.env.ADMIN_SECRET || "yuklabot-secret-token",
+  },
+  serverPort: parseInt(process.env.PORT || process.env.WEBHOOK_PORT || "3000", 10),
 };

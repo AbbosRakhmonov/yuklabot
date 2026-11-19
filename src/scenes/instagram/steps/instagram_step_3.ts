@@ -10,6 +10,7 @@ import {
   withNetworkRetry,
 } from "@/helpers";
 import { destroyInput, openCdnStream } from "@/utils/cdnInput";
+import { activeTasks } from "@/utils/activeTasks";
 
 /**
  * Sends the video (from the DB cache if it was sent before), streamed from
@@ -26,8 +27,20 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
   });
   if (result) return;
 
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.INSTAGRAM,
+    mediaType: EMediaType.VIDEO,
+    url: service.url,
+    title: data?.title || "Instagram Video",
+    quality: data?.is_story ? "Story" : "Reel",
+  });
+
   const stopVideoAction = startContinuousAction(ctx, "upload_video");
   try {
+    monitorTask.updateStage("uploading");
     const thumbnailUrl = data.thumbnail || data.image_url;
     const sentMessage = await withNetworkRetry(async () => {
       const video = await openCdnStream(
@@ -56,6 +69,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
     });
 
     stopVideoAction();
+    monitorTask.complete();
 
     if (ctx.userMongoId) {
       await InstagramDownload.create({
@@ -71,6 +85,7 @@ export const sendInstagramVideo = async (ctx: IMyContext) => {
       });
     }
   } catch (error) {
+    monitorTask.fail(error);
     stopVideoAction();
     throw error;
   }

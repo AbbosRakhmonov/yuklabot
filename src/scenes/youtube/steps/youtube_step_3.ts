@@ -22,6 +22,7 @@ import {
   TOO_MANY_PARTS_CALLBACK,
 } from "@/scenes/youtube/constants";
 import { config } from "@/config/config";
+import { activeTasks } from "@/utils/activeTasks";
 import {
   AUDIO_EXTENSIONS,
   findMediaFile,
@@ -100,15 +101,32 @@ async function downloadAndSendVideo(
     `📥 ${MESSAGES.INFO.DOWNLOADING_VIDEO}`
   );
 
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.YOUTUBE,
+    mediaType: EMediaType.VIDEO,
+    url: service.url,
+    title: service.data?.title,
+    quality: `${height}p`,
+    signal: progress.signal,
+  });
+
   let stopVideoAction: (() => void) | null = null;
   try {
+    monitorTask.updateStage("downloading");
     const folderName = await service.downloadVideo(height, {
-      onProgress: progress.update,
-      signal: progress.signal,
+      onProgress: (p) => {
+        progress.update(p);
+        monitorTask.updateProgress(p);
+      },
+      signal: monitorTask.signal,
     });
     stopVideoAction = startContinuousAction(ctx, "upload_video");
     const filePath = await findMediaFile(folderName, VIDEO_EXTENSIONS);
 
+    monitorTask.updateStage("uploading");
     // Over Telegram's limit it comes in parts, never re-encoded
     const thumbnailUrl = service.data?.thumbnail;
     const sent = await sendVideoFile(ctx, filePath, progress, {
@@ -119,10 +137,12 @@ async function downloadAndSendVideo(
       width: service.getVideoWidth(Number(height)),
       height: Number(height),
       duration: service.data?.duration,
+      onStageChange: (stage) => monitorTask.updateStage(stage),
     });
     stopVideoAction();
     stopVideoAction = null;
     await progress.delete();
+    monitorTask.complete();
 
     if (ctx.userMongoId) {
       await YoutubeDownload.create({
@@ -140,6 +160,7 @@ async function downloadAndSendVideo(
       });
     }
   } catch (error) {
+    monitorTask.fail(error);
     await progress.delete();
     throw error;
   } finally {
@@ -157,16 +178,33 @@ async function downloadAndSendAudio(
     `🎵 ${MESSAGES.INFO.DOWNLOADING_AUDIO}`
   );
 
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.YOUTUBE,
+    mediaType: EMediaType.AUDIO,
+    url: service.url,
+    title: service.data?.title,
+    quality: formatId,
+    signal: progress.signal,
+  });
+
   let stopAudioAction: (() => void) | null = null;
   try {
+    monitorTask.updateStage("downloading");
     const folderName = await service.downloadAudio(formatId, {
-      onProgress: progress.update,
-      signal: progress.signal,
+      onProgress: (p) => {
+        progress.update(p);
+        monitorTask.updateProgress(p);
+      },
+      signal: monitorTask.signal,
     });
     stopAudioAction = startContinuousAction(ctx, "upload_voice");
     const filePath = await findMediaFile(folderName, AUDIO_EXTENSIONS);
     const fileSize = await getUploadableFileSize(filePath);
     await progress.setText(MESSAGES.INFO.UPLOADING);
+    monitorTask.updateStage("uploading");
 
     const data = service.data;
     const sentMessage = await ctx.replyWithAudio(toUploadInput(filePath), {
@@ -178,6 +216,7 @@ async function downloadAndSendAudio(
     stopAudioAction();
     stopAudioAction = null;
     await progress.delete();
+    monitorTask.complete();
 
     if (ctx.userMongoId) {
       await YoutubeDownload.create({
@@ -195,6 +234,7 @@ async function downloadAndSendAudio(
       });
     }
   } catch (error) {
+    monitorTask.fail(error);
     await progress.delete();
     throw error;
   } finally {

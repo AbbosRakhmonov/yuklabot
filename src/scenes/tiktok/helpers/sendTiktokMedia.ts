@@ -30,6 +30,7 @@ import {
   toUploadInput,
 } from "@/utils/downloadFolder";
 import { UserError } from "@/utils/errors";
+import { activeTasks } from "@/utils/activeTasks";
 
 const audioButton = (downloadId: string) =>
   Markup.inlineKeyboard([
@@ -88,16 +89,33 @@ async function sendTiktokVideo(
     `📥 ${MESSAGES.INFO.DOWNLOADING_VIDEO}`
   );
 
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.TIKTOK,
+    mediaType: EMediaType.VIDEO,
+    url: service.url,
+    title: service.data?.title,
+    quality: "HD",
+    signal: progress.signal,
+  });
+
   let stopVideoAction: (() => void) | null = null;
   try {
+    monitorTask.updateStage("downloading");
     const folderName = await service.downloadVideo({
-      onProgress: progress.update,
-      signal: progress.signal,
+      onProgress: (p) => {
+        progress.update(p);
+        monitorTask.updateProgress(p);
+      },
+      signal: monitorTask.signal,
     });
     stopVideoAction = startContinuousAction(ctx, "upload_video");
 
     const filePath = await findMediaFile(folderName, VIDEO_EXTENSIONS);
 
+    monitorTask.updateStage("uploading");
     // The record id is known before sending, so the button can point to it.
     // Without a user record nothing is saved, so the button would be dead.
     const downloadId = new mongoose.Types.ObjectId();
@@ -110,11 +128,13 @@ async function sendTiktokVideo(
       replyMarkup: ctx.userMongoId
         ? audioButton(String(downloadId))
         : undefined,
+      onStageChange: (stage) => monitorTask.updateStage(stage),
     });
 
     stopVideoAction();
     stopVideoAction = null;
     await progress.delete();
+    monitorTask.complete();
 
     if (ctx.userMongoId) {
       await TiktokDownload.create({
@@ -132,6 +152,7 @@ async function sendTiktokVideo(
       });
     }
   } catch (error) {
+    monitorTask.fail(error);
     await progress.delete();
     throw error;
   } finally {
@@ -152,14 +173,29 @@ async function sendTiktokPhotos(
     `🖼 ${MESSAGES.INFO.DOWNLOADING_IMAGE}`
   );
 
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.TIKTOK,
+    mediaType: EMediaType.POST,
+    url: service.url,
+    title: "TikTok Slideshow",
+    quality: "Photos",
+    signal: progress.signal,
+  });
+
   let stopPhotoAction: (() => void) | null = null;
   try {
-    const post = await service.downloadPhotos({ signal: progress.signal });
+    monitorTask.updateStage("downloading");
+    const post = await service.downloadPhotos({ signal: monitorTask.signal });
     if (post.images.length === 0) {
       throw new UserError(MESSAGES.ERROR.MEDIA_NOT_FOUND);
     }
+    if (post.description) monitorTask.setTitle(post.description);
     stopPhotoAction = startContinuousAction(ctx, "upload_photo");
     await progress.setText(MESSAGES.INFO.UPLOADING);
+    monitorTask.updateStage("uploading");
 
     const items: ICarouselItem[] = await sendAlbum(
       ctx,
@@ -190,6 +226,7 @@ async function sendTiktokPhotos(
     stopPhotoAction();
     stopPhotoAction = null;
     await progress.delete();
+    monitorTask.complete();
 
     if (ctx.userMongoId && items.length > 0) {
       const sizes = await Promise.all(
@@ -210,6 +247,7 @@ async function sendTiktokPhotos(
       });
     }
   } catch (error) {
+    monitorTask.fail(error);
     await progress.delete();
     throw error;
   } finally {
@@ -242,17 +280,34 @@ export async function sendTiktokAudio(
     `🎵 ${MESSAGES.INFO.DOWNLOADING_AUDIO}`
   );
 
+  const monitorTask = activeTasks.startTask({
+    userId: ctx.from?.id ?? 0,
+    username: ctx.from?.username,
+    firstName: ctx.from?.first_name,
+    platform: EPlatform.TIKTOK,
+    mediaType: EMediaType.AUDIO,
+    url: service.url,
+    title: service.data?.title,
+    quality: "Audio",
+    signal: progress.signal,
+  });
+
   let stopAudioAction: (() => void) | null = null;
   try {
+    monitorTask.updateStage("downloading");
     const folderName = await service.downloadAudio({
-      onProgress: progress.update,
-      signal: progress.signal,
+      onProgress: (p) => {
+        progress.update(p);
+        monitorTask.updateProgress(p);
+      },
+      signal: monitorTask.signal,
     });
     stopAudioAction = startContinuousAction(ctx, "upload_voice");
 
     const filePath = await findMediaFile(folderName, AUDIO_EXTENSIONS);
     const fileSize = await getUploadableFileSize(filePath);
     await progress.setText(MESSAGES.INFO.UPLOADING);
+    monitorTask.updateStage("uploading");
 
     const sentMessage = await ctx.replyWithAudio(
       toUploadInput(filePath),
@@ -270,6 +325,7 @@ export async function sendTiktokAudio(
     stopAudioAction();
     stopAudioAction = null;
     await progress.delete();
+    monitorTask.complete();
 
     if (ctx.userMongoId) {
       await TiktokDownload.create({
@@ -285,6 +341,7 @@ export async function sendTiktokAudio(
       });
     }
   } catch (error) {
+    monitorTask.fail(error);
     await progress.delete();
     throw error;
   } finally {
