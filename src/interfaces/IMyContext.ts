@@ -2,6 +2,7 @@
 import { IYouTubeState } from "@/scenes/youtube/interfaces/IYoutubeState";
 import { IInstagramState } from "@/scenes/instagram/interfaces/IInstagramState";
 import { ITiktokState } from "@/scenes/tiktok/interfaces/ITiktokState";
+import { IFacebookState } from "@/scenes/facebook";
 import mongoose from "mongoose";
 import { Context, Scenes } from "telegraf";
 
@@ -13,6 +14,7 @@ export interface IMyContext extends Context {
       youtube: IYouTubeState;
       instagram: IInstagramState;
       tiktok: ITiktokState;
+      facebook: IFacebookState;
     };
   };
   userMongoId?: mongoose.Types.ObjectId; // MongoDB _id of the user document

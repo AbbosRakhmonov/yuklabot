@@ -4,7 +4,7 @@ import { sanitizeUrl } from "./sanitizeUrl";
 
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
 // Platforms the bot actually has a downloader for
-const SUPPORTED = new Set<EPlatform>([EPlatform.YOUTUBE, EPlatform.INSTAGRAM, EPlatform.TIKTOK]);
+const SUPPORTED = new Set<EPlatform>([EPlatform.YOUTUBE, EPlatform.INSTAGRAM, EPlatform.TIKTOK, EPlatform.FACEBOOK]);
 
 /**
  * First link in free text that the bot can download, e.g. a group message

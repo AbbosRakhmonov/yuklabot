@@ -3,6 +3,7 @@ import Download from "@/models/Download";
 import "@/models/YoutubeDownload";
 import "@/models/InstagramDownload";
 import "@/models/TiktokDownload";
+import "@/models/FacebookDownload";
 import { EMediaType } from "@/enums/EMediaType";
 import { IMyContext } from "@/interfaces/IMyContext";
 import { extractSupportedUrl, urlVariants } from "@/helpers/extractSupportedUrl";
@@ -54,7 +55,7 @@ export const handleInlineQuery = async (ctx: IMyContext): Promise<void> => {
   if (!url) {
     await ctx.answerInlineQuery([], {
       cache_time: 300,
-      button: OPEN_BOT("YouTube, Instagram yoki TikTok havolasini yozing"),
+      button: OPEN_BOT("YouTube, Instagram, TikTok yoki Facebook havolasini yozing"),
     });
     return;
   }

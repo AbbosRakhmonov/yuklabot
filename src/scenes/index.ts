@@ -2,6 +2,7 @@ import { Scenes } from "telegraf";
 import { youtubeScene } from "./youtube";
 import { instagramScene } from "./instagram";
 import { tiktokScene } from "./tiktok";
+import { facebookScene } from "./facebook";
 import { getUserErrorMessage } from "@/utils/errors";
 import { traceOutcome } from "@/utils/requestHistory";
 import logger from "@/config/logger";
@@ -10,7 +11,7 @@ import { IMyContext } from "@/interfaces/IMyContext";
 import { message } from "telegraf/filters";
 import { handlePlatform } from "@/middleware/handlePlatform";
 
-export const stage = new Scenes.Stage([youtubeScene, instagramScene, tiktokScene]);
+export const stage = new Scenes.Stage([youtubeScene, instagramScene, tiktokScene, facebookScene]);
 
 stage.use(async (ctx: IMyContext, next) => {
   try {

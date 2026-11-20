@@ -25,6 +25,7 @@ const PLATFORM_DOMAINS = {
     "m.facebook.com",
     "fb.com",
     "www.fb.com",
+    "fb.watch",
   ],
   [EPlatform.PINTEREST]: ["pinterest.com", "www.pinterest.com", "pin.it"],
   [EPlatform.TIKTOK]: ["tiktok.com", "www.tiktok.com", "vm.tiktok.com"],

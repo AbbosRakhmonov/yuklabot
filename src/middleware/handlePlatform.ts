@@ -6,6 +6,7 @@ import { getPlatformByUrl, isValidUrl } from "@/helpers";
 import { EPlatform } from "@/enums/EPlatform";
 import { YOUTUBE_SCENE_NAME } from "@/scenes/youtube/constants";
 import { INSTAGRAM_SCENE_NAME } from "@/scenes/instagram/constants";
+import { FACEBOOK_SCENE_NAME } from "@/scenes/facebook";
 import { TIKTOK_SCENE_NAME } from "@/scenes/tiktok/constants";
 import { message } from "telegraf/filters";
 import { sanitizeUrl } from "@/helpers/sanitizeUrl";
@@ -60,6 +61,12 @@ export const handlePlatform = async (ctx: IMyContext) => {
     case EPlatform.TIKTOK:
       await ctx.scene.enter(TIKTOK_SCENE_NAME, {
         tiktok: { url: sanitizedUrl },
+        requestId: ctx.update.update_id,
+      });
+      break;
+    case EPlatform.FACEBOOK:
+      await ctx.scene.enter(FACEBOOK_SCENE_NAME, {
+        facebook: { url: sanitizedUrl },
         requestId: ctx.update.update_id,
       });
       break;
