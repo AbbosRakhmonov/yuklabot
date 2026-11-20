@@ -2,7 +2,7 @@ import "./config/env";
 import "./config/patches";
 
 import { traceRequest } from "./utils/requestHistory";
-import { session } from "telegraf";
+import { session, Telegram } from "telegraf";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { dropLegacyUserIndexes } from "./models/User";
 import { createBot } from "./config/bot";
@@ -36,6 +36,22 @@ import { killAllProcesses } from "./utils/processManager";
 import { IMyContext } from "./interfaces/IMyContext";
 
 let queue: UpdateQueue | undefined;
+
+// The "/" suggestions in Telegram: everyone sees the basics, the admin also their tools
+async function setCommandMenu(telegram: Telegram): Promise<void> {
+  const basic = [
+    { command: "start", description: "Botni ishga tushirish" },
+    { command: "help", description: "Yordam va qo‘llab-quvvatlanadigan saytlar" },
+  ];
+  await telegram.setMyCommands(basic);
+  if (config.admin.chatId) {
+    await telegram.setMyCommands([
+      ...basic,
+      { command: "admin", description: "Statistika va jarayonlar" },
+      { command: "broadcast", description: "Xabarga reply qilib, hammaga yuborish" },
+    ], { scope: { type: "chat", chat_id: config.admin.chatId } });
+  }
+}
 
 // Graceful shutdown function
 const gracefulShutdown = async (): Promise<void> => {
@@ -120,6 +136,7 @@ async function main(): Promise<void> {
     // Create bot instance
     const bot = createBot();
     bot.botInfo = await bot.telegram.getMe();
+    await setCommandMenu(bot.telegram).catch(error => logger.warning("Could not set command menu", { error }));
     queue = new UpdateQueue(bot);
 
     // Middleware (order matters!)
