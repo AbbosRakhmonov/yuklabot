@@ -4,6 +4,7 @@ import "./config/patches";
 import { traceRequest } from "./utils/requestHistory";
 import { session } from "telegraf";
 import { connectDatabase, disconnectDatabase } from "./config/database";
+import { dropLegacyUserIndexes } from "./models/User";
 import { createBot } from "./config/bot";
 import { startCommand } from "./commands/start.command";
 import logger from "./config/logger";
@@ -23,6 +24,8 @@ import {
 } from "./utils/downloadCancel";
 import { stage } from "./scenes";
 import { cleanupService } from "./services/cleanup.service";
+import { monitorService } from "./services/monitor.service";
+import { handleInlineQuery } from "./handlers/inlineQuery.handler";
 import { userActivityCache } from "./utils/userActivityCache";
 import { continuousAction } from "./utils/continuousAction";
 import { UpdateQueue } from "./middleware/backgroundQueue";
@@ -43,6 +46,7 @@ const gracefulShutdown = async (): Promise<void> => {
 
     // Stop cleanup service
     cleanupService.stop();
+    monitorService.stop();
 
     // Stop continuous actions
     continuousAction.stopAll();
@@ -109,6 +113,7 @@ async function main(): Promise<void> {
   try {
     // Connect to MongoDB and get session store
     const store = await connectDatabase();
+    await dropLegacyUserIndexes().catch(error => logger.warning("Could not drop legacy user indexes", { error }));
 
     // Create bot instance
     const bot = createBot();
@@ -119,6 +124,8 @@ async function main(): Promise<void> {
     // ❌ under a progress message: must run before the per-user queue,
     // which is busy with the very download it stops
     bot.action(CANCEL_DOWNLOAD_REGEX, handleCancelDownload);
+    // "@bot <link>" in any chat; has no chat, so it runs before the session
+    bot.on("inline_query", handleInlineQuery);
 
     bot.use(session({ store }));
     bot.use(traceRequest);
@@ -154,6 +161,7 @@ async function main(): Promise<void> {
 
     // Start cleanup service
     cleanupService.start();
+    monitorService.start(bot.telegram);
 
     // Start bot with webhook or polling
     if (config.webhook.enabled) {

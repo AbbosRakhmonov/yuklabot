@@ -11,7 +11,9 @@ import { myDayjs } from "@/utils/myDayjs";
 export class CleanupService {
   private cleanupInterval: NodeJS.Timeout | null = null;
   private readonly CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-  private readonly FOLDER_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+  // Finished downloads delete their own folder; what's left is from crashes.
+  // A download never runs this long, so 6 hours is safe.
+  private readonly FOLDER_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
   /**
    * Start periodic cleanup job

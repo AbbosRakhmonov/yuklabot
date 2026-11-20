@@ -8,12 +8,9 @@ const UserSchema: Schema = new Schema(
       type: Number,
       required: true,
       unique: true,
-      index: true,
     },
     username: {
       type: String,
-      sparse: true,
-      index: true,
     },
     firstName: {
       type: String,
@@ -28,7 +25,6 @@ const UserSchema: Schema = new Schema(
     isBot: {
       type: Boolean,
       default: false,
-      index: true,
     },
     isPremium: {
       type: Boolean,
@@ -38,7 +34,6 @@ const UserSchema: Schema = new Schema(
     // Chat information
     chatId: {
       type: Number,
-      index: true,
     },
     chatType: {
       type: String,
@@ -50,12 +45,10 @@ const UserSchema: Schema = new Schema(
     isActive: {
       type: Boolean,
       default: true,
-      index: true,
     },
     isBlocked: {
       type: Boolean,
       default: false,
-      index: true,
     },
     lastActiveAt: {
       type: Date,
@@ -90,7 +83,6 @@ const UserSchema: Schema = new Schema(
     // Referral and source tracking
     referredBy: {
       type: Number,
-      index: true,
       ref: "User",
     },
     source: {
@@ -108,9 +100,20 @@ const UserSchema: Schema = new Schema(
   }
 );
 
-// Indexes for common queries
-UserSchema.index({ isActive: 1, lastActiveAt: -1 });
-UserSchema.index({ createdAt: -1 });
-UserSchema.index({ messageCount: -1 });
+// Only telegramId (unique) and lastActiveAt (dashboard sort, "active today") are queried.
+// Every extra index is rewritten on each activity upsert.
+const User = mongoose.model<IUser>("User", UserSchema);
 
-export default mongoose.model<IUser>("User", UserSchema);
+const LEGACY_INDEXES = [
+  "username_1", "isBot_1", "chatId_1", "isActive_1", "isBlocked_1", "referredBy_1",
+  "isActive_1_lastActiveAt_-1", "createdAt_-1", "messageCount_-1",
+];
+
+export async function dropLegacyUserIndexes(): Promise<void> {
+  const existing = new Set((await User.collection.indexes()).map(index => index.name));
+  for (const name of LEGACY_INDEXES) {
+    if (existing.has(name)) await User.collection.dropIndex(name);
+  }
+}
+
+export default User;

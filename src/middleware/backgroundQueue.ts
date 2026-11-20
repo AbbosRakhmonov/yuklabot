@@ -7,6 +7,7 @@ import { CANCEL_DOWNLOAD_REGEX } from "@/utils/downloadCancel";
 import { MESSAGES } from "@/constants";
 import logger from "@/config/logger";
 import { Semaphore } from "@/utils/processManager";
+import { extractSupportedUrl } from "@/helpers/extractSupportedUrl";
 
 import { requestUrl, queueTiming } from "@/utils/requestHistory";
 
@@ -65,13 +66,16 @@ export class UpdateQueue {
   // Telegram can then retry them in order without skipping the failed update.
   accept(update: Update): Promise<void> {
     const ctx = this.context(update);
-    if (ctx.callbackQuery && "data" in ctx.callbackQuery && CANCEL_DOWNLOAD_REGEX.test(ctx.callbackQuery.data)) {
+    // Inline answers expire in seconds and only read the cache: never wait behind a download
+    if ("inline_query" in update ||
+      ctx.callbackQuery && "data" in ctx.callbackQuery && CANCEL_DOWNLOAD_REGEX.test(ctx.callbackQuery.data)) {
       return this.bot.handleUpdate(update);
     }
     const key = ctx.from?.id ?? ctx.chat?.id ?? update.update_id;
     const receivedAt = new Date();
     const previous = this.admissions.get(key) ?? Promise.resolve();
     const enqueue = previous.then(async () => {
+      if (!(await this.admitGroupMessage(ctx))) return;
       const release = await this.admissionSlots.acquire();
       try {
         await this.persist(ctx, key, update, receivedAt);
@@ -83,6 +87,24 @@ export class UpdateQueue {
     });
     this.admissions.set(key, enqueue);
     return enqueue;
+  }
+
+  /**
+   * In groups the bot sees ordinary chatter: only commands and messages with a
+   * supported link get in, and the link becomes the whole text, so the rest of
+   * the bot handles it exactly like a link sent in private.
+   */
+  private async admitGroupMessage(ctx: Context): Promise<boolean> {
+    const type = ctx.chat?.type;
+    if (type !== "group" && type !== "supergroup") return true;
+    const message = ctx.message;
+    if (!message) return !("edited_message" in ctx.update);
+    if (!("text" in message)) return false;
+    if (message.text.startsWith("/")) return true;
+    const url = await extractSupportedUrl(message.text);
+    if (!url) return false;
+    Object.assign(message, { text: url, entities: undefined });
+    return true;
   }
 
   private async persist(ctx: Context, key: number, update: Update, receivedAt: Date): Promise<void> {

@@ -123,6 +123,7 @@ export const userActivityMiddleware: Middleware<IMyContext> = async (
         // Store MongoDB ID in context
         if (userDoc && userDoc._id) {
           ctx.userMongoId = userDoc._id;
+          userActivityCache.setMongoId(userId, userDoc._id);
         }
       } catch (error: unknown) {
         logger.error("Error updating user activity", { error, userId });
@@ -138,11 +139,13 @@ export const userActivityMiddleware: Middleware<IMyContext> = async (
       });
 
       // Still fetch the MongoDB ID if not already set
+      if (!ctx.userMongoId) ctx.userMongoId = userActivityCache.getMongoId(userId);
       if (!ctx.userMongoId) {
         try {
-          const userDoc = await User.findOne({ telegramId: userId });
+          const userDoc = await User.findOne({ telegramId: userId }, { _id: 1 }).lean();
           if (userDoc && userDoc._id) {
             ctx.userMongoId = userDoc._id;
+            userActivityCache.setMongoId(userId, userDoc._id);
           }
         } catch (error: unknown) {
           logger.error("Error fetching user for MongoDB ID", {

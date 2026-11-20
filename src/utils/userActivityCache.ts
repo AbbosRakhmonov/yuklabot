@@ -1,9 +1,11 @@
 import { myDayjs } from "./myDayjs";
 import User from "@/models/User";
 import logger from "@/config/logger";
+import type { Types } from "mongoose";
 
 interface UserActivityCache {
   lastUpdate: Date;
+  mongoId?: Types.ObjectId;
   pendingUpdates: {
     messageCount: number;
     commandCount: number;
@@ -142,6 +144,16 @@ class UserActivityCacheManager {
     };
     cached.lastUpdate = myDayjs().toDate();
     this.cache.set(userId, cached);
+  }
+
+  /** The user's Mongo _id never changes, so keep it with the throttle entry. */
+  getMongoId(userId: number): Types.ObjectId | undefined {
+    return this.cache.get(userId)?.mongoId;
+  }
+
+  setMongoId(userId: number, mongoId: Types.ObjectId): void {
+    const cached = this.cache.get(userId);
+    if (cached) cached.mongoId = mongoId;
   }
 
   /**
