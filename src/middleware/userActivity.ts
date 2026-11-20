@@ -88,6 +88,8 @@ export const userActivityMiddleware: Middleware<IMyContext> = async (
         chatId: chat?.id,
         chatType: chat?.type || "private",
         isActive: true,
+        // Writing to the bot again means they unblocked it
+        isBlocked: false,
         $inc: {
           messageCount: (pending?.messageCount || 0) + 1,
           commandCount: pending?.commandCount || 0,

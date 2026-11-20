@@ -26,6 +26,8 @@ import { stage } from "./scenes";
 import { cleanupService } from "./services/cleanup.service";
 import { monitorService } from "./services/monitor.service";
 import { handleInlineQuery } from "./handlers/inlineQuery.handler";
+import { groupReplyMiddleware } from "./middleware/groupReply";
+import { BROADCAST_CALLBACK_REGEX, broadcastCommand, handleBroadcastButton } from "./commands/broadcast.command";
 import { userActivityCache } from "./utils/userActivityCache";
 import { continuousAction } from "./utils/continuousAction";
 import { UpdateQueue } from "./middleware/backgroundQueue";
@@ -127,6 +129,7 @@ async function main(): Promise<void> {
     // "@bot <link>" in any chat; has no chat, so it runs before the session
     bot.on("inline_query", handleInlineQuery);
 
+    bot.use(groupReplyMiddleware);
     bot.use(session({ store }));
     bot.use(traceRequest);
 
@@ -134,6 +137,8 @@ async function main(): Promise<void> {
     bot.command("start", startCommand);
     bot.command("help", helpCommand);
     bot.command("admin", adminCommand);
+    bot.command("broadcast", broadcastCommand);
+    bot.action(BROADCAST_CALLBACK_REGEX, handleBroadcastButton);
 
     bot.use(rateLimiterMiddleware);
     bot.use(userActivityMiddleware);
